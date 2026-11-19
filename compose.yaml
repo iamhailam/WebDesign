@@ -1,0 +1,25 @@
+name: fashion-foundation
+
+services:
+  postgres:
+    image: postgres:17.9-bookworm
+    environment:
+      POSTGRES_USER: db_admin
+      POSTGRES_DB: ${DB_NAME:-fashion_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run npm run setup:env first}
+      APP_DB_PASSWORD: ${DB_PASSWORD:?Run npm run setup:env first}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init/01-runtime-role.sh:/docker-entrypoint-initdb.d/01-runtime-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U db_admin -d \"$$POSTGRES_DB\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

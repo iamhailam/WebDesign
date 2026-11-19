@@ -1,0 +1,31 @@
+{
+  "name": "@fashion/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "express": "5.3.0",
+    "pg": "8.23.1",
+    "dotenv": "17.4.2",
+    "jsonwebtoken": "9.0.3",
+    "cors": "2.8.6",
+    "helmet": "8.3.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/pg": "8.23.1",
+    "@types/jsonwebtoken": "9.0.10",
+    "@types/cors": "2.8.19",
+    "supertest": "7.3.2",
+    "@types/supertest": "6.0.3"
+  }
+}
