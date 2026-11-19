@@ -1,5 +1,7 @@
 # Fashion Retail Project
 
+Task 15 — Production Readiness (20/11/2026): hướng dẫn production tại [DEPLOYMENT](docs/DEPLOYMENT.md), backup/restore, troubleshooting và rollback tại [OPERATIONS](docs/OPERATIONS.md), checklist và bằng chứng cuối tại [FINAL_HANDOVER](docs/FINAL_HANDOVER.md). Đã chuẩn bị build/config/container/CI và restore drill local; **chưa deploy và chưa đạt cổng go-live**. Hosting, ngân sách, secrets, domain, staging E2E và PO UAT còn cần người dùng thực hiện/phê duyệt.
+
 Task 02 đã thiết lập monorepo chạy local trên Windows; Task 03 & Task 04 đã triển khai lược đồ PostgreSQL 22 bảng (`001`–`019`), roles/grants, seed demo và business functions/procedures lõi; Task 05 đã triển khai Express Authentication + RBAC; Task 06–08 đã triển khai toàn bộ Catalog, Commerce và Back-Office REST APIs; Task 09–12 đã triển khai Design System, Homepage, Catalog, Shopping Flow và Customer Account UI; Task 13 đã hoàn thiện Back-Office Frontend (`/admin/*` cho `SALES`, `WAREHOUSE`, `MARKETING`, `ADMIN`) gồm Dashboard, Orders, Inventory & Ledger, Products/Variants/Images/Categories/Brands, Vouchers & Usages, Users, Banners và Audit Events ([docs/API_CONTRACT.md](docs/API_CONTRACT.md), [docs/UI_DESIGN_SPEC.md](docs/UI_DESIGN_SPEC.md), [docs/ERD.md](docs/ERD.md), [docs/MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md), [docs/SCHEMA_VERIFICATION.md](docs/SCHEMA_VERIFICATION.md)). [SPEC.md](SPEC.md) là nguồn gốc; thiết kế nằm trong [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [TASKS.md](TASKS.md) và [AGENTS.md](AGENTS.md).
 
 ## Công cụ và phiên bản
@@ -63,6 +65,8 @@ Root dev dùng concurrently để chạy cả API và Vite; Ctrl+C dừng cả h
 | npm.cmd run db:seed | Chạy idempotent demo seed (`database/seeds/001_demo.sql`, dev/test only) |
 | npm.cmd run db:test | Kiểm thử migrations, seeds, constraints, roles và concurrency trên DB tạm |
 | npm.cmd run db:verify | DB tạm riêng, SQL up/down + PL/pgSQL fixture smoke test, tự cleanup |
+| npm.cmd run db:restore:verify | Dump/restore PG17 thật trên hai DB tạm local, kiểm counts/ACL/routines/order snapshot, tự cleanup |
+| npm.cmd run db:permissions:verify | Cluster Docker tạm riêng, bootstrap/migrate bằng owner không superuser, kiểm quyền runtime/report |
 | npm.cmd run start --workspace backend | Chạy backend đã build |
 | npm.cmd run preview --workspace frontend | Preview frontend build; không dùng làm production server |
 
@@ -76,7 +80,7 @@ Invoke-RestMethod http://127.0.0.1:3000/api/health/ready
 Invoke-RestMethod http://localhost:5173/api/health
 ```
 
-GET /api/health và /api/health/live là liveness HTTP 200, không query DB. GET /api/health/ready dùng pg Pool SELECT 1: HTTP 200 khi kết nối được, 503 khi DB không sẵn sàng; không trả host/password/version. Readiness endpoint chỉ phục vụ local hiện tại; deployment sau phải giới hạn truy cập bằng ingress theo API_CONTRACT.
+GET /api/health và /api/health/live là liveness HTTP 200, không query DB. GET /api/health/ready dùng pg Pool SELECT 1: HTTP 200 khi kết nối được, 503 khi DB không sẵn sàng; không trả host/password/version. Production bắt buộc READINESS_TOKEN; monitor gửi X-Readiness-Token, thiếu/sai trả404 trước query DB. Health platform dùng liveness cần monitor readiness riêng.
 
 ```json
 {"success":true,"data":{"status":"ok","service":"fashion-api"},"meta":{"request_id":"22222222-2222-4222-8222-222222222222"}}
@@ -86,7 +90,7 @@ GET /api/health và /api/health/live là liveness HTTP 200, không query DB. GET
 {"success":false,"message":"Không tìm thấy tài nguyên.","error":{"code":"NOT_FOUND","details":{}},"meta":{"request_id":"22222222-2222-4222-8222-222222222222"}}
 ```
 
-X-Request-ID do server sinh; unknown API404, JSON sai400, payload quá lớn413, CORS origin ngoài allowlist403, DB unavailable503 dùng cùng envelope. Middleware Zod đã có để dùng ở task tiếp; JWT helper chỉ kiểm chữ ký HS256, issuer/audience/exp/max-age và cấu trúc claims. Chưa có login/register/RBAC/lookup actor DB; **không dùng helper JWT riêng lẻ để bảo vệ route nghiệp vụ** trước T04.
+X-Request-ID do server sinh; unknown API404, JSON sai400, payload quá lớn413, CORS origin ngoài allowlist403, DB unavailable503 dùng cùng envelope. Auth/RBAC đã triển khai: JWT HS256 + issuer/audience/expiry, active/role/token_version đọc từ DB, ownership và DB actor checks. Limiter memory: login30/IP/15 phút và10/IP+account/15 phút; register5/IP/phút; checkout30/IP/phút. Chỉ vận hành một process/instance trước khi có limiter chung/ingress được kiểm chứng.
 
 ## Database và migration
 
@@ -120,4 +124,4 @@ Kết quả kiểm chứng được ghi tại [docs/FOUNDATION_VERIFICATION.md](
 
 npm audit --omit=dev hiện không có vulnerability. Audit toàn bộ còn 3 moderate theo chuỗi node-pg-migrate→glob/minimatch (development tooling); không nhận glob pattern từ request. Không áp downgrade/override major tự động để làm mất cảnh báo; cần theo dõi upstream trước khi dùng pipeline migration với nguồn file không tin cậy. Build có thể báo annotation warning từ source Zod; không thay đổi package đã khóa chỉ để ẩn warning.
 
-T01 và các chính sách giá/SKU/voucher/RBAC còn pending không bị tự đánh dấu đã duyệt bởi T02–T12. Đã triển khai toàn bộ backend REST API (Auth/Users, Catalog/Banners, Commerce, Back-Office Orders/Inventory/Vouchers/Reports/Audit), Frontend Design System (`Task 09`), Storefront Homepage + Catalog (`Task 10`), Shopping Flow UI (`Task 11`) và Customer Account UI (`Task 12`: `AccountLayout`, React Hook Form + Zod, `ProtectedRoute`, `/login`, `/register`, `/account`, `/account/orders`, `/account/orders/:orderId`); hiện chưa triển khai Back-Office UI (`/admin/*`), benchmark 50k–100k đơn hay restore rehearsal, và không có thanh toán online, marketplace, AI hay multi-warehouse.
+Đã có toàn bộ backend REST API, storefront/customer và Back-Office UI (`Task 13`). Task14 có benchmark60.001 đơn; Task15 có restore drill local PG17 thật, Docker production image và CI/manual delivery workflow. T01/policies pending, browser E2E thật, V16/V17 barrier, API p95/Web Vitals, managed hosting/backup recovery, metrics và PO UAT vẫn chưa được nghiệm thu. Các snapshot foundation/schema/QA giữ nguyên lịch sử; trạng thái mới nhất ở [FINAL_HANDOVER](docs/FINAL_HANDOVER.md). Không có thanh toán online, marketplace, AI hay multi-warehouse.

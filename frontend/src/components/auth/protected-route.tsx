@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import type { Role } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
-import { ForbiddenPage } from '@/pages/auth';
+import { ForbiddenPage } from '@/components/auth/forbidden-page';
 
 export interface ProtectedRouteProps {
   children: ReactNode;

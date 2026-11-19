@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -230,5 +232,24 @@ describe('Task 10 Homepage + Catalog integration flows', () => {
       expect(screen.getByTestId('location-probe').textContent).toBe('/products?search=Sneaker');
     });
     expect(await screen.findByText('Giày Sneaker Urban Runner')).toBeInTheDocument();
+  });
+
+  it('regression: keeps single h1 with active HERO banner, serves seeded styleweb.png asset, and updates document.title', async () => {
+    expect(existsSync(resolve(process.cwd(), 'public/media/styleweb.png'))).toBe(true);
+
+    const fetchMock = buildCatalogFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAppAt('/');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Cửa hàng thời trang đa thương hiệu' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Bộ Sưu Tập Thu Đông Đa Thương Hiệu' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.title).toBe('Trang chủ | Fashion Retail');
+    });
+
+    fireEvent.click(await screen.findByRole('link', { name: /Urban Stride.*Footwear/ }));
+    await waitFor(() => {
+      expect(document.title).toBe('Urban Stride | Fashion Retail');
+    });
   });
 });

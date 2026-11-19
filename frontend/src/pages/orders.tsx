@@ -18,6 +18,7 @@ import {
 } from '@/lib/admin-navigation';
 import { useAuth } from '@/lib/auth-store';
 import { formatVnd } from '@/lib/commerce-utils';
+import { usePageTitle } from '@/lib/use-page-title';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -128,6 +129,7 @@ function OrderInvoiceView({ order }: { order: OrderDetailDto }) {
 }
 
 export function OrderSuccessPage() {
+  usePageTitle('Đặt hàng thành công');
   const { orderId = '' } = useParams<{ orderId: string }>();
   const { user, token } = useAuth();
   const numericId = Number(orderId);

@@ -186,6 +186,7 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _ne
   if (status >= 500) {
     console.error(JSON.stringify({ event: 'request_failed', request_id: res.locals.requestId, code }));
   }
+  res.locals.errorCode = code;
   res.status(status).json({
     success: false,
     message,

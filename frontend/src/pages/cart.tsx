@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, Minus, Package, Plus, Trash2 } from 'lucide-react';
 import { ApiClientError, fetchCartApi, removeCartItemApi, updateCartItemApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
+import { usePageTitle } from '@/lib/use-page-title';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,9 +13,10 @@ import { Breadcrumb } from '@/components/commerce/breadcrumb';
 import { EmptyState } from '@/components/commerce/empty-state';
 import { ErrorState } from '@/components/commerce/error-state';
 import { PriceDisplay } from '@/components/commerce/price-display';
-import { ForbiddenPage } from '@/pages/auth';
+import { ForbiddenPage } from '@/components/auth/forbidden-page';
 
 export function CartPage() {
+  usePageTitle('Giỏ hàng');
   const { user, token } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();

@@ -7,6 +7,7 @@ import {
   fetchPublicCategories,
   fetchPublicProducts,
 } from '@/lib/api';
+import { usePageTitle } from '@/lib/use-page-title';
 import { Button } from '@/components/ui/button';
 import { BrandCard } from '@/components/commerce/brand-card';
 import { EmptyState } from '@/components/commerce/empty-state';
@@ -43,6 +44,7 @@ const SERVICE_HIGHLIGHTS = [
 ] as const;
 
 export function HomePage() {
+  usePageTitle('Trang chủ');
   const bannersQuery = useQuery({
     queryKey: ['public', 'banners'],
     queryFn: () => fetchPublicBanners(),
@@ -111,6 +113,10 @@ export function HomePage() {
 
   return (
     <div className="space-y-12 py-6 sm:py-8">
+      {bannersQuery.isPending || heroBanners.length > 0 ? (
+        <h1 className="sr-only">Cửa hàng thời trang đa thương hiệu</h1>
+      ) : null}
+
       {/* 6. Hero Banners */}
       {bannersQuery.isPending ? (
         <BannerSkeleton />

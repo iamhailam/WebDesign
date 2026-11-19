@@ -1,5 +1,22 @@
+import type { ConnectionOptions } from 'node:tls';
 import pg from 'pg';
 import type { Environment } from './env.js';
+
+export function buildSslConfig(
+  env: Pick<Environment, 'DB_SSL_MODE' | 'DB_SSL_CA'>,
+): false | ConnectionOptions {
+  switch (env.DB_SSL_MODE) {
+    case 'disable':
+      return false;
+    case 'require':
+      // Encrypted channel without CA/hostname verification (provider-managed certificates without a published CA).
+      return { rejectUnauthorized: false };
+    case 'verify-full':
+      return env.DB_SSL_CA
+        ? { rejectUnauthorized: true, ca: env.DB_SSL_CA.replace(/\\n/g, '\n') }
+        : { rejectUnauthorized: true };
+  }
+}
 
 export function createPool(env: Environment): pg.Pool {
   const pool = new pg.Pool({
@@ -9,9 +26,11 @@ export function createPool(env: Environment): pg.Pool {
     user: env.DB_USER,
     password: env.DB_PASSWORD,
     max: env.DB_POOL_MAX,
+    ssl: buildSslConfig(env),
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 3000,
     statement_timeout: 5000,
+    query_timeout: 8000,
     application_name: 'fashion-api',
   });
   pool.on('error', () => {

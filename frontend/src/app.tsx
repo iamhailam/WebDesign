@@ -7,6 +7,7 @@ import { AuthProvider } from '@/lib/auth-context';
 import { useAuth } from '@/lib/auth-store';
 import { ToastProvider } from '@/components/ui/toast';
 import { ProtectedRoute } from '@/components/auth/protected-route';
+import { ForbiddenPage } from '@/components/auth/forbidden-page';
 import { AppLayout } from '@/components/layout/app-layout';
 import { ProductGridSkeleton } from '@/components/commerce/loading-skeleton';
 import { HomePage } from '@/pages/home';
@@ -23,7 +24,6 @@ const OrderDetailPage = lazy(() => import('@/pages/orders').then((m) => ({ defau
 const LoginPage = lazy(() => import('@/pages/auth').then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import('@/pages/auth').then((m) => ({ default: m.RegisterPage })));
 const AccountPage = lazy(() => import('@/pages/auth').then((m) => ({ default: m.AccountPage })));
-const ForbiddenPage = lazy(() => import('@/pages/auth').then((m) => ({ default: m.ForbiddenPage })));
 const DesignSystemPage = lazy(() => import('@/pages/design-system').then((m) => ({ default: m.DesignSystemPage })));
 
 // Back-Office Lazy Pages

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LogOut, Package, ShoppingBag, User } from 'lucide-react';
 import { useAuth } from '@/lib/auth-store';
+import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ export function AccountLayout({
   headerAction,
   children,
 }: AccountLayoutProps) {
+  usePageTitle(title);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 

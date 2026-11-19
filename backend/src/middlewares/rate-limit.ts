@@ -13,6 +13,32 @@ interface Bucket {
   resetAt: number;
 }
 
+/** Bounded single-process fixed-window limiter; never logs IPs or account data. */
+export function createRequestRateLimiter(limit: number, windowMs: number, now = Date.now): RequestHandler {
+  const buckets = new Map<string, Bucket>();
+  return (req, res, next) => {
+    const ts = now();
+    const key = getClientIp(req);
+    const bucket = buckets.get(key);
+    if (bucket && ts < bucket.resetAt) {
+      if (bucket.count >= limit) {
+        res.setHeader('Retry-After', String(Math.max(1, Math.ceil((bucket.resetAt - ts) / 1000))));
+        return next(new ApiError(429, 'RATE_LIMITED', 'Quá nhiều yêu cầu. Vui lòng thử lại sau.'));
+      }
+      bucket.count += 1;
+    } else {
+      for (const [ip, entry] of buckets) if (ts >= entry.resetAt) buckets.delete(ip);
+      // Fail closed when all slots are active instead of allocating unbounded memory.
+      if (buckets.size >= 10000) {
+        res.setHeader('Retry-After', String(Math.ceil(windowMs / 1000)));
+        return next(new ApiError(429, 'RATE_LIMITED', 'Quá nhiều yêu cầu. Vui lòng thử lại sau.'));
+      }
+      buckets.set(key, { count: 1, resetAt: ts + windowMs });
+    }
+    next();
+  };
+}
+
 export interface LoginRateLimiter {
   middleware: RequestHandler;
   resetAccount: (req: Request) => void;
@@ -42,12 +68,13 @@ export function createLoginRateLimiter(options: LoginRateLimiterOptions = {}): L
   function consume(store: Map<string, Bucket>, key: string, limit: number, ts: number): number | null {
     const existing = store.get(key);
     if (!existing || ts >= existing.resetAt) {
-      store.set(key, { count: 1, resetAt: ts + windowMs });
-      if (store.size > 10000) {
+      if (store.size >= 10000) {
         for (const [k, b] of store) {
           if (ts >= b.resetAt) store.delete(k);
         }
+        if (!store.has(key) && store.size >= 10000) return Math.ceil(windowMs / 1000);
       }
+      store.set(key, { count: 1, resetAt: ts + windowMs });
       return null;
     }
     if (existing.count >= limit) {

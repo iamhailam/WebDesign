@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import express, { type Express, type RequestHandler } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -11,7 +11,7 @@ import {
   requireSelfOrRoles,
 } from './auth/rbac.js';
 import { ApiError, errorHandler } from './http/error.js';
-import { createLoginRateLimiter, type LoginRateLimiterOptions } from './middlewares/rate-limit.js';
+import { createLoginRateLimiter, createRequestRateLimiter, type LoginRateLimiterOptions } from './middlewares/rate-limit.js';
 import { createAuthRouter } from './routes/auth.routes.js';
 import { createBackofficeRouter } from './routes/backoffice.routes.js';
 import { createCatalogRouter } from './routes/catalog.routes.js';
@@ -35,16 +35,39 @@ export interface AppOptions {
   pool?: pg.Pool;
   jwt?: JwtSettings;
   loginRateLimit?: LoginRateLimiterOptions;
+  /** Number of trusted reverse-proxy hops (0 = ignore X-Forwarded-For). */
+  trustProxy?: number;
+  /** Emit structured logs with route templates (no raw URL, query, body, headers or PII). */
+  accessLog?: boolean;
+  readinessToken?: string;
   mountTestRoutes?: (app: Express, helpers: AuthHelpers) => void;
 }
 
 export function createApp(options: AppOptions) {
   const app = express();
   app.disable('x-powered-by');
-  app.use((_req, res, next) => {
+  app.set('trust proxy', options.trustProxy ?? 0);
+  app.use((req, res, next) => {
     res.locals.requestId = randomUUID();
     res.setHeader('X-Request-ID', res.locals.requestId as string);
     res.setHeader('Cache-Control', 'no-store');
+    if (options.accessLog) {
+      const startedAt = process.hrtime.bigint();
+      res.on('finish', () => {
+        const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+        console.log(JSON.stringify({
+          event: 'http_request',
+          request_id: res.locals.requestId,
+          method: req.method,
+          path: typeof req.route?.path === 'string'
+            ? `${req.baseUrl}${req.route.path}`
+            : Array.isArray(req.route?.path) && req.route.path.includes(req.path) ? req.path : 'unmatched',
+          status: res.statusCode,
+          duration_ms: Math.round(durationMs * 10) / 10,
+          code: res.locals.errorCode,
+        }));
+      });
+    }
     next();
   });
   app.use(helmet());
@@ -56,6 +79,9 @@ export function createApp(options: AppOptions) {
     exposedHeaders: ['X-Request-ID'],
   }));
   app.use(express.json({ limit: '64kb' }));
+  // One process per service until an ingress/shared rate limiter is configured.
+  app.post('/api/auth/register', createRequestRateLimiter(5, 60_000));
+  app.post('/api/orders/checkout', createRequestRateLimiter(30, 60_000));
   app.get(['/api/health', '/api/health/live'], (_req, res) => {
     res.json({
       success: true,
@@ -63,7 +89,14 @@ export function createApp(options: AppOptions) {
       meta: { request_id: res.locals.requestId },
     });
   });
-  app.get('/api/health/ready', async (_req, res) => {
+  app.get('/api/health/ready', async (req, res) => {
+    if (options.readinessToken) {
+      const supplied = Buffer.from(req.get('X-Readiness-Token') ?? '');
+      const expected = Buffer.from(options.readinessToken);
+      if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+        throw new ApiError(404, 'NOT_FOUND', 'Không tìm thấy tài nguyên.');
+      }
+    }
     try {
       await options.checkDatabase();
     } catch {

@@ -13,6 +13,7 @@ import {
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { formatVnd } from '@/lib/commerce-utils';
+import { usePageTitle } from '@/lib/use-page-title';
 import { Button } from '@/components/ui/button';
 import { FormField, Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -21,11 +22,12 @@ import { Breadcrumb } from '@/components/commerce/breadcrumb';
 import { EmptyState } from '@/components/commerce/empty-state';
 import { ErrorState } from '@/components/commerce/error-state';
 import { PriceDisplay } from '@/components/commerce/price-display';
-import { ForbiddenPage } from '@/pages/auth';
+import { ForbiddenPage } from '@/components/auth/forbidden-page';
 
 const PHONE_REGEX = /^\+?[0-9]{8,15}$/;
 
 export function CheckoutPage() {
+  usePageTitle('Thanh toán COD');
   const { user, token } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();

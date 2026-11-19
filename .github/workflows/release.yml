@@ -1,0 +1,36 @@
+name: Approved delivery (manual CD)
+on:
+  workflow_dispatch:
+    inputs:
+      release_approved:
+        description: PO/Ops approved hosting, budget, release gates and this revision
+        type: boolean
+        default: false
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: production-delivery
+  cancel-in-progress: false
+jobs:
+  quality:
+    if: github.ref == 'refs/heads/main' && inputs.release_approved
+    uses: ./.github/workflows/ci.yml
+  handoff:
+    needs: quality
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Validate activation
+        env:
+          API_BASE: ${{ vars.PRODUCTION_API_BASE }}
+        run: |
+          node -e "const u=new URL(process.env.API_BASE); if(u.protocol!=='https:' || u.hostname.endsWith('example.com') || u.pathname!=='/api') process.exit(1)"
+      - name: Record manual deployment instructions
+        run: |
+          {
+            echo "Approved revision: $GITHUB_SHA"
+            echo "Download release-$GITHUB_SHA from the quality job; verify SHA256SUMS."
+            echo "Ops: follow docs/DEPLOYMENT.md for backup, migration, backend then frontend promotion and smoke checks."
+            echo "No external deployment or paid resource creation is automated by this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"

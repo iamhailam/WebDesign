@@ -1,5 +1,7 @@
 # Kiến trúc hệ thống bán lẻ
 
+Cập nhật vận hành Task15 (20/11/2026): xem [DEPLOYMENT](DEPLOYMENT.md), [OPERATIONS](OPERATIONS.md) và [FINAL_HANDOVER](FINAL_HANDOVER.md) cho hiện trạng triển khai/kiểm chứng. Các đoạn “chưa có ứng dụng” và sơ đồ reporting pool dưới đây là snapshot thiết kế ban đầu. Runtime hiện có API/UI đầy đủ và **một pool app_rw_user**, reports qua SECURITY DEFINER có actor checks; chưa có report pool/read replica. Production profile, image, CI và restore drill local đã được chuẩn bị, chưa deploy cloud/go-live.
+
 Thiết kế 1.0, 19/11/2026. Ràng buộc G/U theo [PRD](PRD.md); các cơ chế mới là D theo [DECISIONS](DECISIONS.md). Đây là thiết kế để review, không có ứng dụng đang chạy.
 
 Cập nhật 20/11/2026: Task 02 đã tạo foundation React/Express, pg Pool, health, Compose và SQL migration tooling; xem [README](../README.md) và [kết quả kiểm chứng](FOUNDATION_VERIFICATION.md). Các module nghiệp vụ và bảo mật DB mô tả bên dưới vẫn là thiết kế tương lai, chưa được thực thi. Stack bổ sung người dùng chỉ định: React Router, Tailwind CSS, shadcn/ui, TanStack Query, React Hook Form + Zod; backend JWT primitives + Zod.

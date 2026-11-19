@@ -3,10 +3,11 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
-import { ShieldAlert, UserCheck } from 'lucide-react';
+import { UserCheck } from 'lucide-react';
 import { z } from 'zod';
 import { ApiClientError, fetchMeApi, registerCustomerApi } from '@/lib/api';
 import { sanitizeReturnTo, useAuth } from '@/lib/auth-store';
+import { usePageTitle } from '@/lib/use-page-title';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { FormField, Input } from '@/components/ui/input';
@@ -36,6 +37,7 @@ const registerSchema = z.object({
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export function LoginPage() {
+  usePageTitle('Đăng nhập');
   const { login, user } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -143,6 +145,7 @@ export function LoginPage() {
 }
 
 export function RegisterPage() {
+  usePageTitle('Đăng ký tài khoản');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -330,36 +333,5 @@ export function AccountPage() {
         </section>
       ) : null}
     </AccountLayout>
-  );
-}
-
-export function ForbiddenPage() {
-  const { user } = useAuth();
-  return (
-    <section className="mx-auto max-w-lg space-y-4 px-4 py-12 text-center">
-      <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-brand-red-soft text-brand-red">
-        <ShieldAlert className="size-6" aria-hidden="true" />
-      </div>
-      <h1 className="text-2xl font-bold text-foreground">Không có quyền truy cập (403)</h1>
-      <p className="text-sm text-muted-foreground">
-        {user
-          ? `Tài khoản vai trò ${user.role} không có quyền truy cập chức năng hoặc trang này.`
-          : 'Bạn không có quyền truy cập trang này.'}
-      </p>
-      <div className="flex flex-wrap justify-center gap-3">
-        {user && user.role !== 'CUSTOMER' ? (
-          <Button asChild variant="brand">
-            <Link to="/admin">Về Back-Office</Link>
-          </Button>
-        ) : (
-          <Button asChild variant="brand">
-            <Link to="/products">Tiếp tục xem sản phẩm</Link>
-          </Button>
-        )}
-        <Button asChild variant="outline">
-          <Link to="/">Về trang chủ</Link>
-        </Button>
-      </div>
-    </section>
   );
 }

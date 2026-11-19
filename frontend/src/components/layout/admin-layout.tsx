@@ -17,6 +17,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-store';
+import { usePageTitle } from '@/lib/use-page-title';
 import {
   ADMIN_GROUP_LABELS,
   getAdminHomeForRole,
@@ -68,6 +69,7 @@ export interface AdminLayoutProps {
 }
 
 export function AdminLayout({ title, description, breadcrumbs, actions, children }: AdminLayoutProps) {
+  usePageTitle(`${title} | Back-Office`);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);

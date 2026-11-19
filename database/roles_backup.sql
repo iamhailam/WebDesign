@@ -39,7 +39,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE db_admin REVOKE EXECUTE ON FUNCTIONS FROM PUBL
 -- 4. Least-privilege grants (Task 03 baseline: fail-closed on base tables)
 REVOKE ALL ON ALL TABLES IN SCHEMA app FROM PUBLIC, app_rw_user, report_ro_user;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA app FROM PUBLIC, app_rw_user, report_ro_user;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA app FROM PUBLIC, app_rw_user, report_ro_user;
+-- ROUTINES includes procedures too: pg_restore --no-acl can otherwise leave
+-- default PUBLIC EXECUTE on restored procedures before defaults are restored.
+REVOKE ALL ON ALL ROUTINES IN SCHEMA app FROM PUBLIC, app_rw_user, report_ro_user;
 
 GRANT SELECT ON
   app.vw_public_brands,

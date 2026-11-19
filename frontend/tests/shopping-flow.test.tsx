@@ -325,7 +325,7 @@ describe('Task 11 Shopping Flow UI (Product -> Variant -> Cart -> Checkout -> Or
     });
 
     // Sign in -> returns to product page
-    fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'buyer@test.invalid' } });
+    fireEvent.change(await screen.findByLabelText(/Email/), { target: { value: 'buyer@test.invalid' } });
     fireEvent.change(screen.getByLabelText(/Mật khẩu/), { target: { value: 'StrongPassword123!' } });
     fireEvent.click(screen.getByRole('button', { name: 'Đăng nhập' }));
 
@@ -375,7 +375,7 @@ describe('Task 11 Shopping Flow UI (Product -> Variant -> Cart -> Checkout -> Or
 
     // Pre-populate flow directly by logging in and hitting checkout
     renderShoppingApp('/login?return_to=%2Fproducts%2Fao-phao-nordic-peak');
-    fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'buyer@test.invalid' } });
+    fireEvent.change(await screen.findByLabelText(/Email/), { target: { value: 'buyer@test.invalid' } });
     fireEvent.change(screen.getByLabelText(/Mật khẩu/), { target: { value: 'StrongPassword123!' } });
     fireEvent.click(screen.getByRole('button', { name: 'Đăng nhập' }));
 

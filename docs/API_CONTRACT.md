@@ -209,7 +209,7 @@ Reports from/to inclusive local dates, tối đa 366 ngày và from≤to; server
 | GET /api/admin/audit-events | A, D-13 | page,page_size,actor_id?,entity_type?,entity_id?,action?,from?,to? | List AuditEvent đã whitelist |
 | GET /api/health/live | PUBLIC, D vận hành | Không | 200 {status:"ok"}; không DB details |
 | GET /api/health | PUBLIC, U Task02 | Alias liveness | 200 {status:"ok",service:"fashion-api"} trong data; không query DB |
-| GET /api/health/ready | Ingress vận hành, D | Không | 200 data {status:"ready",database:"up"} hoặc 503 error.code DATABASE_UNAVAILABLE; bảo vệ truy cập ngoài bằng ingress |
+| GET /api/health/ready | Monitor vận hành, D | Production: header X-Readiness-Token bằng READINESS_TOKEN | 200 data {status:"ready",database:"up"} hoặc 503 error.code DATABASE_UNAVAILABLE; thiếu/sai token404 trước query DB; ingress có thể giới hạn thêm |
 
 BannerCreate/Editable: title R≤160,desktop_path R,mobile_path?,alt_text R≤200,placement R,target_type R,product_id?,category_id?,brand_id?,starts_at R,ends_at R,sort_order default0 ở POST/R ở PUT,is_active defaultfalse ở POST/R ở PUT. Chọn đúng FK theo target_type, còn lại null; NONE tất cả null. Schedule [start,end), khác voucher inclusive G có chủ ý. target_path read-only derive `/products/:slug`, `/categories/:slug`, `/brands/:slug`; không input external URL/HTML. Banner deactivate bằng PUT, không DELETE v1.
 

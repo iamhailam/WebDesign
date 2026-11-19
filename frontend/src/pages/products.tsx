@@ -11,6 +11,7 @@ import {
   fetchPublicProducts,
 } from '@/lib/api';
 import { formatVnd, type CatalogFilterValue } from '@/lib/commerce-utils';
+import { usePageTitle } from '@/lib/use-page-title';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { BrandCard } from '@/components/commerce/brand-card';
@@ -74,9 +75,17 @@ export function ProductsPage() {
 
   const resolvedBrand = brandSlugQuery.data?.data;
   const resolvedCategory = categorySlugQuery.data?.data;
+  const search = searchParams.get('search') || '';
+  const activePageTitle = resolvedBrand
+    ? resolvedBrand.name
+    : resolvedCategory
+      ? resolvedCategory.name
+      : search
+        ? `Tìm kiếm: ${search}`
+        : 'Danh mục sản phẩm';
+  usePageTitle(activePageTitle);
 
   const page = Math.max(1, Number(searchParams.get('page') || '1') || 1);
-  const search = searchParams.get('search') || '';
   const filterValue: CatalogFilterValue = {
     categoryId: searchParams.get('category_id') || (resolvedCategory ? String(resolvedCategory.id) : ''),
     brandId: searchParams.get('brand_id') || (resolvedBrand ? String(resolvedBrand.id) : ''),
@@ -349,6 +358,7 @@ export function ProductsPage() {
 }
 
 export function BrandsPage() {
+  usePageTitle('Thương hiệu đối tác');
   const brandsQuery = useQuery({
     queryKey: ['public', 'brands', 'all'],
     queryFn: () => fetchPublicBrands(1, 50),

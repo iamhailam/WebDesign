@@ -11,6 +11,7 @@ import {
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { computeDiscountPercent } from '@/lib/commerce-utils';
+import { usePageTitle } from '@/lib/use-page-title';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -52,6 +53,7 @@ export function ProductDetailPage() {
   });
 
   const product = detailQuery.data?.data;
+  usePageTitle(product ? `${product.name} — ${product.brand.name}` : 'Chi tiết sản phẩm');
 
   const relatedQuery = useQuery({
     queryKey: ['public', 'products', 'related', product?.category.id],

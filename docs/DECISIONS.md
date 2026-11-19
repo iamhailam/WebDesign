@@ -1,5 +1,9 @@
 # Sổ quyết định thiết kế
 
+Ghi nhận Task15 (20/11/2026): người dùng cho phép chuẩn bị production trong repository, yêu cầu đánh giá hosting và cấm tự deploy/chi phí khi chưa phê duyệt. Đã thêm TLS verify-full bắt buộc, exact HTTPS origin/runtime role/readiness token validation, logging không raw URL, proxy/rate/body/timeouts, production Docker, CI/manual delivery và restore drill. Đây là phạm vi kỹ thuật được giao, không tự đổi các D/policy thành accepted. [DEPLOYMENT](DEPLOYMENT.md), [OPERATIONS](OPERATIONS.md), [FINAL_HANDOVER](FINAL_HANDOVER.md) là trạng thái vận hành mới nhất.
+
+Runtime vẫn dùng một `app_rw_user` pool và actor-checked reporting functions; `report_ro_user` chỉ có hai aggregate views, chưa có pool/API reporting riêng. Không thay DB grants để cố dùng report role cho các functions cần actor. Đây là sai khác với sơ đồ mục tiêu trong ARCHITECTURE, còn cần Architect review trước read replica/scaling. Hosting/budget, backup owner/retention, RPO/RTO và rollout production vẫn chờ duyệt; restore local không duyệt thay D-12/D-14.
+
 Ngày 19/11/2026. Trạng thái mặc định của các D là **Đề xuất, chờ chốt**. Tài liệu khác dùng phương án khuyến nghị để tạo thiết kế hoàn chỉnh, không phải quyết định đã được duyệt. Chủ sản phẩm chốt chính sách kinh doanh; kiến trúc sư chốt cơ chế sau khi có spike kỹ thuật. Không cần dừng việc soạn tài liệu để hỏi duyệt từng mục.
 
 ## 1. Ràng buộc đã xác lập

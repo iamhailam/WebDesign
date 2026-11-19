@@ -18,14 +18,16 @@
     "build": "npm run build --workspaces",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "npm run typecheck --workspaces",
-    "test": "npm run test --workspaces",
+    "test": "npm run test --workspaces && node --test scripts/tests/*.test.mjs",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
     "db:migrate": "node scripts/migrate.mjs up",
     "db:migrate:down": "node scripts/migrate.mjs down",
     "db:verify": "node scripts/verify-database.mjs",
     "db:seed": "node scripts/seed-database.mjs",
-    "db:test": "node --test database/tests/*.test.mjs"
+    "db:test": "node --test database/tests/*.test.mjs",
+    "db:restore:verify": "node scripts/restore-rehearsal.mjs",
+    "db:permissions:verify": "node scripts/verify-production-permissions.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3",

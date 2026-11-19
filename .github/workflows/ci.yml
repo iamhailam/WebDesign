@@ -1,0 +1,68 @@
+name: Production checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VITE_API_BASE_URL: ${{ vars.PRODUCTION_API_BASE || 'https://api.example.com/api' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm install --global npm@11.20.0
+      - run: npm ci
+      - name: Validate workflow syntax and shell scripts
+        run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" -w /repo rhysd/actionlint:1.7.7@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 .github/workflows/ci.yml .github/workflows/release.yml
+      - run: npm run setup:env
+      - run: npm run db:up
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run db:verify
+      - run: npm run db:test
+      - run: npm test
+      - run: npm run db:restore:verify
+      - run: npm run db:permissions:verify
+      - run: npm audit --omit=dev
+      - run: docker build -t fashion-api:${{ github.sha }} .
+      - name: Assemble versioned delivery bundle
+        run: |
+          mkdir -p release/frontend release/backend
+          cp -R frontend/dist/. release/frontend/
+          cp -R backend/dist release/backend/dist
+          cp -R backend/src release/backend/src
+          cp backend/tsconfig.json backend/tsconfig.build.json release/backend/
+          cp -R database docs scripts release/
+          cp package.json package-lock.json tsconfig.base.json .npmrc .node-version .env.example .env.production.example Dockerfile .dockerignore README.md SPEC.md TASKS.md AGENTS.md release/
+          cp backend/package.json release/backend/package.json
+          cp frontend/package.json release/frontend/package.json
+          cp frontend/vercel.json release/frontend/vercel.json
+          printf '%s\n' "$GITHUB_SHA" > release/REVISION
+          printf '%s\n' "$VITE_API_BASE_URL" > release/PUBLIC_API_BASE
+          find release -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ github.sha }}
+          path: |
+            release/
+            SHA256SUMS
+          retention-days: 14
+          include-hidden-files: true # Explicit bundle contains only approved, non-secret dotfiles/templates.
+      - name: Stop local test database
+        if: always()
+        run: docker compose down

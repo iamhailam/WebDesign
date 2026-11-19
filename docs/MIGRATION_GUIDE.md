@@ -2,6 +2,8 @@
 
 Ngày 20/11/2026. Raw SQL qua node-pg-migrate9.0.0 đã khóa; không ORM/schema sync. [ERD hiện tại](ERD.md), [dictionary mục tiêu và ghi chú Task03](DATABASE_DESIGN.md), [kết quả kiểm chứng](SCHEMA_VERIFICATION.md).
 
+Production Task15: [bootstrap và chiến lược migration](DEPLOYMENT.md), [backup/restore/rollback](OPERATIONS.md), [bằng chứng mới nhất](FINAL_HANDOVER.md). `NODE_ENV=production` bắt buộc MIGRATION_DATABASE_URL riêng, luôn verify TLS, không fallback .env local/POSTGRES_PASSWORD; runner chặn down production. Migrations001–019 không sửa. `roles_backup.sql` reapply quyền bằng ALL ROUTINES (functions và procedures), đã kiểm qua `npm.cmd run db:restore:verify` trên hai DB tạm local.
+
 ## 1. Chạy local Windows
 
 Từ root bằng PowerShell, giữ .env local đã có từ Task02:
