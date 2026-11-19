@@ -1,12 +1,41 @@
 import { randomUUID } from 'node:crypto';
-import express from 'express';
+import express, { type Express, type RequestHandler } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import type pg from 'pg';
+import type { JwtSettings } from './auth/jwt.js';
+import {
+  createAuthMiddleware,
+  requirePermission,
+  requireRole,
+  requireSelfOrRoles,
+} from './auth/rbac.js';
 import { ApiError, errorHandler } from './http/error.js';
+import { createLoginRateLimiter, type LoginRateLimiterOptions } from './middlewares/rate-limit.js';
+import { createAuthRouter } from './routes/auth.routes.js';
+import { createBackofficeRouter } from './routes/backoffice.routes.js';
+import { createCatalogRouter } from './routes/catalog.routes.js';
+import { createCommerceRouter } from './routes/commerce.routes.js';
+import { createUsersRouter } from './routes/users.routes.js';
+import { createAuthService } from './services/auth.service.js';
+import { createBackofficeService } from './services/backoffice.service.js';
+import { createCatalogService } from './services/catalog.service.js';
+import { createCommerceService } from './services/commerce.service.js';
+
+export interface AuthHelpers {
+  requireAuth: RequestHandler;
+  requireRole: typeof requireRole;
+  requirePermission: typeof requirePermission;
+  requireSelfOrRoles: typeof requireSelfOrRoles;
+}
 
 export interface AppOptions {
   checkDatabase: () => Promise<void>;
   frontendOrigin: string;
+  pool?: pg.Pool;
+  jwt?: JwtSettings;
+  loginRateLimit?: LoginRateLimiterOptions;
+  mountTestRoutes?: (app: Express, helpers: AuthHelpers) => void;
 }
 
 export function createApp(options: AppOptions) {
@@ -46,6 +75,33 @@ export function createApp(options: AppOptions) {
       meta: { request_id: res.locals.requestId },
     });
   });
+
+  if (options.pool) {
+    const catalogService = createCatalogService(options.pool);
+    if (options.jwt) {
+      const authService = createAuthService(options.pool, options.jwt);
+      const commerceService = createCommerceService(options.pool);
+      const backofficeService = createBackofficeService(options.pool);
+      const requireAuth = createAuthMiddleware((userId) => authService.getActor(userId), options.jwt);
+      const loginLimiter = createLoginRateLimiter(options.loginRateLimit);
+      app.use('/api/auth', createAuthRouter(authService, requireAuth, loginLimiter));
+      app.use('/api/users', createUsersRouter(authService, requireAuth));
+      app.use('/api', createCatalogRouter(catalogService, requireAuth));
+      app.use('/api', createCommerceRouter(commerceService, requireAuth));
+      app.use('/api', createBackofficeRouter(backofficeService, requireAuth));
+      if (options.mountTestRoutes) {
+        options.mountTestRoutes(app, {
+          requireAuth,
+          requireRole,
+          requirePermission,
+          requireSelfOrRoles,
+        });
+      }
+    } else {
+      app.use('/api', createCatalogRouter(catalogService));
+    }
+  }
+
   app.use((_req, _res, next) => next(new ApiError(404, 'NOT_FOUND', 'Không tìm thấy tài nguyên.')));
   app.use(errorHandler);
   return app;

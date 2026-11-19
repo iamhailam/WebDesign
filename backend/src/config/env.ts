@@ -13,7 +13,7 @@ const schema = z.object({
   DB_USER: z.string().min(1).default('app_rw_user'),
   DB_PASSWORD: z.string().min(1),
   DB_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
-  JWT_SECRET: z.preprocess((value) => value === '' ? undefined : value, z.string().min(32).optional()),
+  JWT_SECRET: z.preprocess((value) => value === '' ? undefined : value, z.string().min(32)),
   JWT_ISSUER: z.string().min(1).default('fashion-api'),
   JWT_AUDIENCE: z.string().min(1).default('fashion-web'),
 });

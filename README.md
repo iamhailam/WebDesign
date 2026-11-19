@@ -1,6 +1,6 @@
-# Fashion Retail Project Foundation
+# Fashion Retail Project
 
-Task 02 thiết lập monorepo chạy local trên Windows. Nghiệp vụ products/SKU/cart/checkout/voucher/orders và schema 22 bảng chưa được triển khai. [SPEC.md](SPEC.md) là nguồn gốc; thiết kế nằm trong [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [TASKS.md](TASKS.md) và [AGENTS.md](AGENTS.md).
+Task 02 đã thiết lập monorepo chạy local trên Windows; Task 03 & Task 04 đã triển khai lược đồ PostgreSQL 22 bảng (`001`–`016`), roles/grants, seed demo và business functions/procedures lõi; Task 05 đã triển khai Express Authentication + RBAC; Task 06 đã triển khai Catalog & Banners REST API (public filters/sort/detail + admin CRUD) cùng seed đa thương hiệu `002_multibrand_demo.sql` cho Fashion, Shoes, Bags, Watches, Accessories, Perfumes ([docs/API_CONTRACT.md](docs/API_CONTRACT.md), [docs/ERD.md](docs/ERD.md), [docs/MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md), [docs/SCHEMA_VERIFICATION.md](docs/SCHEMA_VERIFICATION.md)). Các REST endpoints cart/checkout/orders/inventory/vouchers/reports và UI nghiệp vụ chưa được triển khai. [SPEC.md](SPEC.md) là nguồn gốc; thiết kế nằm trong [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [TASKS.md](TASKS.md) và [AGENTS.md](AGENTS.md).
 
 ## Công cụ và phiên bản
 
@@ -60,7 +60,9 @@ Root dev dùng concurrently để chạy cả API và Vite; Ctrl+C dừng cả h
 | npm.cmd run db:down | Dừng service/network, **giữ volume** |
 | npm.cmd run db:migrate | node-pg-migrate up từ database/migrations |
 | npm.cmd run db:migrate:down | Rollback một migration, chỉ chạy trên DB phù hợp |
-| npm.cmd run db:verify | DB tạm riêng, SQL up/down + PL/pgSQL, tự cleanup |
+| npm.cmd run db:seed | Chạy idempotent demo seed (`database/seeds/001_demo.sql`, dev/test only) |
+| npm.cmd run db:test | Kiểm thử migrations, seeds, constraints, roles và concurrency trên DB tạm |
+| npm.cmd run db:verify | DB tạm riêng, SQL up/down + PL/pgSQL fixture smoke test, tự cleanup |
 | npm.cmd run start --workspace backend | Chạy backend đã build |
 | npm.cmd run preview --workspace frontend | Preview frontend build; không dùng làm production server |
 
@@ -88,11 +90,11 @@ X-Request-ID do server sinh; unknown API404, JSON sai400, payload quá lớn413,
 
 ## Database và migration
 
-Compose bind cổng vào loopback, volume giữ dữ liệu qua restart/down. Init script chạy **chỉ khi volume rỗng**: tạo runtime app_rw_user không superuser và không quyền CREATE schema/tables, đủ kết nối và SELECT 1. db_admin là bootstrap superuser local của image, chỉ dành migration/verification; backend Pool chỉ dùng app_rw_user. T03 sẽ thiết kế owner/grants production theo quyết định D-07; không coi bootstrap local là cấu hình production.
+Compose bind cổng vào loopback, volume giữ dữ liệu qua restart/down. Init script chạy **chỉ khi volume rỗng**: tạo runtime app_rw_user không superuser và không quyền CREATE schema/tables, đủ kết nối và SELECT 1. db_admin là bootstrap superuser local của image, chỉ dành migration/verification; backend Pool chỉ dùng app_rw_user. Task 03 đã thiết lập owner/grants baseline ở schema `app` (fail-closed trước khi có business functions T04–T10) và [database/roles_backup.sql](database/roles_backup.sql); không coi bootstrap local là cấu hình production.
 
 Migration tooling lấy MIGRATION_DATABASE_URL nếu được cấu hình, nếu không dùng db_admin + POSTGRES_PASSWORD local. Backend chỉ parse allowlist biến runtime và không sử dụng migration credential. Không dùng runtime credential để chạy migration.
 
-database/migrations hiện rỗng có chủ ý; db:migrate xác nhận kết nối/runner và tạo metadata pgmigrations, chưa tạo bảng nghiệp vụ. SQL chuẩn node-pg-migrate 9 dùng một file .sql với marker `-- Up Migration` / `-- Down Migration`; runner quản lý transaction, không viết COMMIT trong function. Fixture database/tests/fixtures/001_foundation_probe.sql chỉ chạy bởi db:verify trên DB tên foundation_verify_<random>, tạo một bảng probe, kiểm up/down rồi xóa DB tạm; không đụng bảng nghiệp vụ hay dữ liệu thật. Không dùng loader alpha từ tài liệu phiên bản khác.
+`database/migrations` chứa 19 file SQL thuần (`001`–`019`) dùng marker `-- Up Migration` / `-- Down Migration` cho `node-pg-migrate` 9; runner quản lý transaction, không viết `COMMIT` trong function. Seed demo nằm riêng tại `database/seeds/001_demo.sql` và `database/seeds/002_multibrand_demo.sql` (`npm.cmd run db:seed`); script role/grants và tham chiếu `pg_dump`/`pg_restore` nằm tại [database/roles_backup.sql](database/roles_backup.sql). Fixture `database/tests/fixtures/001_foundation_probe.sql` chỉ chạy bởi `db:verify` trên DB tạm `foundation_verify_<random>`; kiểm thử toàn bộ schema và business concurrency (`database/tests/*.test.mjs`) chạy bằng `npm.cmd run db:test` trên DB tạm. Không dùng loader alpha từ tài liệu phiên bản khác.
 
 Không xóa volume để “sửa nhanh” mật khẩu: init không chạy lại nếu volume có dữ liệu. Giữ .env đã tạo, hoặc đổi password bằng thao tác quản trị có chủ đích và cập nhật cấu hình. db:down không dùng --volumes. Remote DB/production cần quyền CREATE DATABASE riêng để chạy db:verify, TLS và chính sách secrets riêng; spike này được kiểm chứng ở local Docker.
 
@@ -105,7 +107,7 @@ backend/tests/
 frontend/src/{components/ui,lib,pages}/
 frontend/src/app.tsx / main.tsx / styles.css
 frontend/tests/
-database/{init,migrations,seeds,tests/fixtures}/
+database/{init,migrations,seeds,tests}/ + roles_backup.sql
 scripts/             environment, setup-env, migration, verification
 docs/                đặc tả và thiết kế sẵn có
 ```
@@ -114,8 +116,8 @@ Hai workspaces npm backend/frontend; database là thư mục SQL, runner tooling
 
 ## Kiểm chứng và giới hạn hiện tại
 
-Kết quả lệnh và endpoint thực tế được ghi ở [docs/FOUNDATION_VERIFICATION.md](docs/FOUNDATION_VERIFICATION.md). Test HTTP unit sử dụng Supertest và dependency DB kiểm soát; readiness qua server thật và db:verify là kiểm chứng PostgreSQL thực, không dùng mock để khẳng định kết nối DB.
+Kết quả kiểm chứng được ghi tại [docs/FOUNDATION_VERIFICATION.md](docs/FOUNDATION_VERIFICATION.md) (Task 02) và [docs/SCHEMA_VERIFICATION.md](docs/SCHEMA_VERIFICATION.md) (Task 03). Test HTTP unit sử dụng Supertest và dependency DB kiểm soát; readiness qua server thật, `db:verify`, `db:migrate`, `db:seed` và `db:test` là kiểm chứng PostgreSQL thực, không dùng mock để khẳng định kết nối/ràng buộc DB.
 
 npm audit --omit=dev hiện không có vulnerability. Audit toàn bộ còn 3 moderate theo chuỗi node-pg-migrate→glob/minimatch (development tooling); không nhận glob pattern từ request. Không áp downgrade/override major tự động để làm mất cảnh báo; cần theo dõi upstream trước khi dùng pipeline migration với nguồn file không tin cậy. Build có thể báo annotation warning từ source Zod; không thay đổi package đã khóa chỉ để ẩn warning.
 
-T01 và các chính sách giá/SKU/voucher/RBAC còn pending không bị tự đánh dấu đã duyệt bởi việc dựng foundation. User đã cho phép T02 cụ thể; không phụ thuộc việc chốt toàn bộ nghiệp vụ để chạy skeleton. Không có checkout, thanh toán online, marketplace, AI, multi-warehouse hoặc schema nghiệp vụ trong task này.
+T01 và các chính sách giá/SKU/voucher/RBAC còn pending không bị tự đánh dấu đã duyệt bởi T02–T08. Đã triển khai và kiểm thử toàn bộ backend REST API cho Auth/Users (Task 05), Catalog/Banners (Task 06), Commerce (Task 07) và Back-Office Orders/Inventory/Vouchers/Reports/Audit (Task 08); hiện chưa triển khai UI storefront/admin hoàn chỉnh, benchmark 50k–100k đơn hay restore rehearsal, và không có thanh toán online, marketplace, AI hay multi-warehouse.

@@ -7,6 +7,12 @@ const pool = createPool(env);
 const app = createApp({
   frontendOrigin: env.FRONTEND_ORIGIN,
   checkDatabase: async () => { await pool.query('SELECT 1'); },
+  pool,
+  jwt: {
+    secret: env.JWT_SECRET,
+    issuer: env.JWT_ISSUER,
+    audience: env.JWT_AUDIENCE,
+  },
 });
 const server = app.listen(env.PORT, env.HOST, () => {
   console.log(JSON.stringify({ event: 'server_started', host: env.HOST, port: env.PORT }));

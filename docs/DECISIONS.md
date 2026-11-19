@@ -66,3 +66,13 @@ Người dùng yêu cầu triển khai cụ thể T02 với React Router, Tailwi
 D-12 được chọn phần foundation: npm workspaces backend/frontend; Node 26.13.0 và npm 11.20.0 đang có, PostgreSQL Docker 17.9-bookworm; exact direct dependency versions + lockfile theo README. TypeScript 5.9.3 nằm trong peer range; ESLint 10 thay bản 9 deprecated ngay trong bootstrap; override Vite 7.3.8 tránh đồng thời Vite 7/8. node-pg-migrate 9 stable dùng SQL marker up/down, không dùng loader alpha 10. Không nâng cấp dependency đã có của dự án vì trước T02 chưa có manifest.
 
 Bootstrap db_admin chỉ là local image superuser, backend dùng app_rw_user không superuser; owner/grants production và schema nghiệp vụ để T03. JWT mới là primitive verify, chưa có login hay DB actor checks T04. Health có alias /api/health theo yêu cầu mới và readiness lỗi theo envelope thống nhất. D-12 phần backup/RPO/RTO/deploy chưa được coi là đã nghiệm thu; xem FOUNDATION_VERIFICATION.md về bằng chứng foundation.
+
+### 20/11/2026 Task 03 PostgreSQL Schema
+
+Task 03 triển khai DDL SQL thuần qua `node-pg-migrate` (`001`–`011`) trên schema `app` cho 20 bảng (12 bảng SPEC + `brands`, `product_images`, `banners` + 5 bảng thuộc tính SKU đa loại hàng), metadata 6 `product_types`, 9 views, 68 indexes, `database/roles_backup.sql`, seed demo `001_demo.sql` và 85 tests trên DB trống ([SCHEMA_VERIFICATION](SCHEMA_VERIFICATION.md)).
+
+Việc hoàn tất T03 giữ nguyên trạng thái **Đề xuất, chờ chốt** của `D-01`..`D-11`, `D-13`, `D-14`: `NUMERIC(12,2)` chưa áp `CHECK` phần lẻ `.00`, chưa tính phí ship; `app_rw_user` giữ grants fail-closed (chỉ `SELECT` public catalog/banner views); 5 deferred constraint triggers dùng `SECURITY DEFINER` (`search_path=pg_catalog, app, pg_temp`, thu hồi `EXECUTE`) để tương thích `COMMIT` qua hàm `SECURITY DEFINER` sau này. Hai bảng `checkout_requests` (T09) và `audit_events` (T04–T11) cùng các business functions/workflows SPEC §7 tiếp tục thuộc các task tương ứng.
+
+### 20/11/2026 Task 04 Database Business Logic
+
+Task 04 triển khai các bảng `checkout_requests` và `audit_events` (`012`), chuẩn hóa tên trigger `trg_protect_finalized_orders`, và triển khai các hàm/thủ tục PL/pgSQL (`013`–`014`): `fn_calculate_voucher_discount`, `fn_place_order`, `fn_cancel_order`, `fn_transition_order`, `sp_import_inventory` (4 và 7 tham số) chạy `SECURITY DEFINER` và cấp `EXECUTE` cho `app_rw_user`. Các quyết định kinh doanh pending trong mục 2 giữ nguyên trạng thái chờ chốt; backend REST API và frontend UI chưa triển khai. Xem bằng chứng 94/94 DB tests tại [SCHEMA_VERIFICATION](SCHEMA_VERIFICATION.md).

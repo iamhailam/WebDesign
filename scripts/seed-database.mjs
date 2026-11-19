@@ -8,6 +8,7 @@ try {
   await client.connect();
   await client.query('BEGIN');
   await client.query(await readFile(new URL('../database/seeds/001_demo.sql', import.meta.url), 'utf8'));
+  await client.query(await readFile(new URL('../database/seeds/002_multibrand_demo.sql', import.meta.url), 'utf8'));
   await client.query('COMMIT');
   console.log('Demo seed committed. Synthetic accounts are inactive; existing fixtures were not reset.');
 } catch (error) {

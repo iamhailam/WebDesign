@@ -1,6 +1,6 @@
 # ERD schema PostgreSQL đã triển khai
 
-Ngày 20/11/2026. Schema `app`, migrations 001–009, PostgreSQL 17.9. Đây là **20 bảng đang có**, khác ERD mục tiêu 22 bảng trong [DATABASE_DESIGN](DATABASE_DESIGN.md): checkout_requests và audit_events chưa thuộc phạm vi Task03.
+Ngày 20/11/2026. Schema `app`, migrations 001–016, PostgreSQL 17.9. Đã triển khai **đầy đủ 22 bảng** khớp ERD mục tiêu trong [DATABASE_DESIGN](DATABASE_DESIGN.md) (gồm cả `checkout_requests` và `audit_events` từ Task 04). Xem thêm [SCHEMA_VERIFICATION](SCHEMA_VERIFICATION.md).
 
 ```mermaid
 erDiagram
@@ -26,6 +26,9 @@ erDiagram
   product_variants ||--o{ inventory_transactions : movement
   users ||--o{ inventory_transactions : actor
   users ||--o{ orders : owns
+  users ||--o{ checkout_requests : idempotency
+  orders ||--o| checkout_requests : bound_order
+  users o|--o{ audit_events : actor
   orders ||--|{ order_items : immutable_snapshot
   product_variants ||--o{ order_items : referenced_SKU
   orders ||--o{ inventory_transactions : order_reference
@@ -78,4 +81,4 @@ Catalog, thuộc tính, giỏ và các quan hệ FK tách theo phụ thuộc kh�
 
 Các cột snapshot trong orders/order_items là chứng từ lịch sử có chủ đích; thay tên/giá catalog không được sửa chứng từ. combo_key là dữ liệu dẫn xuất phục vụ UNIQUE và được DB đồng bộ; inventory.quantity/vouchers.used_count là số dư/counter gốc theo SPEC. Không tuyên bố toàn bộ mô hình không có dữ liệu dư thừa hoặc các counter đã được đối soát tự động bởi Task03.
 
-Dictionary chi tiết mục tiêu nằm trong [DATABASE_DESIGN](DATABASE_DESIGN.md), phần ghi chú Task03 chỉ rõ khác biệt hiện tại. Cú pháp và constraints thực thi có thẩm quyền nằm ở [migrations](../database/migrations/001_namespace_roles.sql). Hướng dẫn vận hành: [MIGRATION_GUIDE](MIGRATION_GUIDE.md).
+Dictionary chi tiết mục tiêu nằm trong [DATABASE_DESIGN](DATABASE_DESIGN.md), phần ghi chú Task03 chỉ rõ khác biệt hiện tại. Cú pháp và constraints thực thi có thẩm quyền nằm ở [migrations](../database/migrations/001_namespace_roles.sql). Script role/backup: [roles_backup.sql](../database/roles_backup.sql). Hướng dẫn vận hành: [MIGRATION_GUIDE](MIGRATION_GUIDE.md). Kết quả kiểm chứng: [SCHEMA_VERIFICATION](SCHEMA_VERIFICATION.md).

@@ -1,6 +1,6 @@
 # Hợp đồng REST API
 
-Bản thiết kế 1.0 — 19/11/2026. Base path `/api`, JSON UTF-8, giữ các URL gốc SPEC §5. G/U/D theo [PRD](PRD.md); thay đổi preview, giá, SKU và quyền DB chưa được coi là đã duyệt cho tới khi chốt [DECISIONS](DECISIONS.md). Đây là hợp đồng mô tả, chưa có server/OpenAPI sinh tự động.
+Bản thiết kế 1.0 — 19/11/2026 (cập nhật trạng thái triển khai 20/11/2026). Base path `/api`, JSON UTF-8, giữ các URL gốc SPEC §5. G/U/D theo [PRD](PRD.md); toàn bộ REST API backend gồm Auth + Users (mục 3), Catalog public/admin (mục 4), Cart + Voucher Preview (mục 5), Checkout + Customer/Back-Office Orders (mục 6), Inventory + Ledger (mục 7), Voucher Management + Revenue/Best-Sellers Reports (mục 8), Banners public/admin + Audit Events + Health (mục 9) đã được triển khai trên Express + PostgreSQL 17.9. Các quyết định kinh doanh pending nằm trong [DECISIONS](DECISIONS.md).
 
 ## 1. Quy tắc chung
 
@@ -245,4 +245,4 @@ SQLSTATE P10xx dưới đây là namespace **dự án đề xuất**, implementa
 
 ## 11. Test contracts bắt buộc
 
-Test envelope/types/money strings, schema unknown-field reject, static route trước :id, pagination tie; C/S/W/M/A allow/deny; IDOR 404; inactive/token_version401; public không lộ draft. Stock/voucher race, cart same-key/same-cart, price mismatch, duplicate options, images cross-product, multi-SKU cancel, finalized order, report SUM/ties/timezone đều nối task T20–T25 trong [TASKS](../TASKS.md). Không viết hoặc chạy API trong task tài liệu này.
+Test envelope/types/money strings, schema unknown-field reject, static route trước :id, pagination tie; C/S/W/M/A allow/deny; IDOR 404; inactive/token_version401; public không lộ draft; cart/voucher preview/checkout/idempotency/oversell/voucher race/cancel race; back-office orders transition concurrency, inventory import/ledger, voucher CRUD/terms-lock/masked usages, revenue/best-sellers reports và audit events đã có integration & concurrency test đầy đủ cho Auth/Users (Task 05), Catalog/Banners (Task 06), Commerce (Task 07) và Back-Office (Task 08) tại `backend/tests/`. Các quyết định kinh doanh pending và kiểm thử UI/benchmark quy mô lớn tiếp tục theo [TASKS](../TASKS.md).

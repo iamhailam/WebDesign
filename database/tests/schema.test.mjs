@@ -31,7 +31,7 @@ test('PostgreSQL schema on a newly created empty database', { timeout: 120000 },
     await t.test('empty database has no app schema; all versioned migrations apply', async () => {
       assert.equal((await db.query("SELECT to_regnamespace('app') AS n")).rows[0].n, null);
       assert.equal((await runner({ ...options, direction: 'up' })).length, migrationCount);
-      assert.equal((await db.query("SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema='app' AND table_type='BASE TABLE'")).rows[0].n, 20);
+      assert.equal((await db.query("SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema='app' AND table_type='BASE TABLE'")).rows[0].n, 22);
     });
     await t.test('all migrations down then up on empty domain data', async () => {
       assert.equal((await runner({ ...options, direction: 'down', count: Infinity })).length, migrationCount);
@@ -169,6 +169,14 @@ test('PostgreSQL schema on a newly created empty database', { timeout: 120000 },
     });
     await negative('cross-product image SKU foreign key', '23503', () => db.query("INSERT INTO app.product_images(product_id,variant_id,asset_path,alt_text) VALUES($1,$2,'/media/x.jpg','X')", [ids.perfume_product, ids.variant]));
     await negative('at most one primary product image', '23505', () => db.query("INSERT INTO app.product_images(product_id,asset_path,alt_text,is_primary) VALUES($1,'/media/x.jpg','X',TRUE)", [ids.product]));
+    await negative('at most one primary variant image', '23505', async () => {
+      await db.query("INSERT INTO app.product_images(product_id,variant_id,asset_path,alt_text,is_primary) VALUES($1,$2,'/media/v1.jpg','V1',TRUE)", [ids.product, ids.variant]);
+      await db.query("INSERT INTO app.product_images(product_id,variant_id,asset_path,alt_text,is_primary) VALUES($1,$2,'/media/v2.jpg','V2',TRUE)", [ids.product, ids.variant]);
+    });
+    await negative('deleting last image of active product is rejected', '23514', async () => {
+      await db.query('UPDATE app.products SET is_active=TRUE WHERE id=$1', [ids.product]);
+      await db.query('DELETE FROM app.product_images WHERE product_id=$1', [ids.product]);
+    });
     await negative('asset traversal/script URLs are rejected', '23514', () => db.query("INSERT INTO app.product_images(product_id,asset_path,alt_text) VALUES($1,'/media/../secret.js','X')", [ids.product]));
     await negative('active product requires image', '23514', () => db.query('UPDATE app.products SET is_active=TRUE WHERE id=$1', [ids.perfume_product]));
     await positive('inactive brand hides an otherwise published catalog product', async () => {
@@ -177,21 +185,49 @@ test('PostgreSQL schema on a newly created empty database', { timeout: 120000 },
       await db.query('UPDATE app.brands SET is_active=FALSE WHERE id=$1', [ids.brand]);
       assert.equal((await db.query('SELECT count(*)::int AS n FROM app.vw_catalog_products WHERE id=$1', [ids.product])).rows[0].n, 0);
     });
+    await positive('optional attributes and perfume axes work across product types', async () => {
+      const bagPid = await product('BAGS');
+      const bagVid = await variant(bagPid, [['color', 'black']]);
+      const perfPid = await product('PERFUME');
+      const perfVid = await variant(perfPid, [['volume_ml', '50-ml'], ['concentration', 'edt']]);
+      await db.query('SET CONSTRAINTS ALL IMMEDIATE');
+      const rows = (await db.query('SELECT id, combo_key FROM app.product_variants WHERE id = ANY($1::int[]) ORDER BY id', [[bagVid, perfVid]])).rows;
+      assert.equal(rows.length, 2);
+      assert.match(rows[0].combo_key, /^\d+=\d+$/);
+      assert.match(rows[1].combo_key, /^\d+=\d+,\d+=\d+$/);
+    });
     await negative('banner must target exactly one matching entity', '23514', () => db.query("INSERT INTO app.banners(title,desktop_path,alt_text,placement,target_type,product_id,starts_at,ends_at) VALUES('X','/media/x.jpg','X','HERO','NONE',$1,now(),now()+interval '1 day')", [ids.product]));
+    await negative('banner PRODUCT target requires product_id', '23514', () => db.query("INSERT INTO app.banners(title,desktop_path,alt_text,placement,target_type,starts_at,ends_at) VALUES('X','/media/x.jpg','X','PROMO','PRODUCT',now(),now()+interval '1 day')"));
+    await positive('public banner view enforces schedule and active target', async () => {
+      const bid = (await db.query("INSERT INTO app.banners(title,desktop_path,alt_text,placement,target_type,brand_id,starts_at,ends_at,is_active) VALUES('Live','/media/b.jpg','B','HERO','BRAND',$1,now()-interval '1 hour',now()+interval '1 hour',TRUE) RETURNING id", [ids.brand])).rows[0].id;
+      assert.equal((await db.query('SELECT count(*)::int AS n FROM app.vw_public_banners WHERE id=$1', [bid])).rows[0].n, 1);
+      await db.query('UPDATE app.brands SET is_active=FALSE WHERE id=$1', [ids.brand]);
+      assert.equal((await db.query('SELECT count(*)::int AS n FROM app.vw_public_banners WHERE id=$1', [bid])).rows[0].n, 0);
+    });
     await negative('banner schedule must have positive duration', '23514', () => db.query("INSERT INTO app.banners(title,desktop_path,alt_text,placement,target_type,starts_at,ends_at) VALUES('X','/media/x.jpg','X','HERO','NONE',now(),now())"));
     await negative('voucher used_count cannot exceed limit', '23514', () => db.query('UPDATE app.vouchers SET used_count=usage_limit+1 WHERE id=$1', [ids.voucher]));
     await negative('percentage cannot exceed100', '23514', () => db.query('UPDATE app.vouchers SET discount_value=101 WHERE id=$1', [ids.voucher]));
+    await negative('FIXED voucher forbids max_discount_amount', '23514', () => db.query("INSERT INTO app.vouchers(code,discount_type,discount_value,max_discount_amount,usage_limit,start_date,end_date) VALUES('FIXED-CAP','FIXED',50000,10000,10,now(),now()+interval '1 day')"));
+    await negative('voucher min_order_amount cannot be negative', '23514', () => db.query('UPDATE app.vouchers SET min_order_amount=-1 WHERE id=$1', [ids.voucher]));
     await negative('voucher date interval must be valid', '23514', () => db.query('UPDATE app.vouchers SET end_date=start_date WHERE id=$1', [ids.voucher]));
     await negative('voucher code identity cannot change', '23514', () => db.query("UPDATE app.vouchers SET code='RENAMED' WHERE id=$1", [ids.voucher]));
     await negative('order final_amount must equal subtotal-discount', '23514', () => db.query("INSERT INTO app.orders(user_id,shipping_address,recipient_name,recipient_phone,subtotal_amount,discount_amount,final_amount) VALUES($1,'Fixture address 001','X','0900000000',100,10,100)", [ids.customer]));
     await negative('only COD is supported', '23514', () => db.query("INSERT INTO app.orders(user_id,shipping_address,recipient_name,recipient_phone,subtotal_amount,discount_amount,final_amount,payment_method) VALUES($1,'Fixture address 001','X','0900000000',100,0,100,'CARD')", [ids.customer]));
     await negative('empty order fails at deferred check', '23514', () => db.query("INSERT INTO app.orders(user_id,shipping_address,recipient_name,recipient_phone,subtotal_amount,discount_amount,final_amount) VALUES($1,'Fixture address 001','X','0900000000',100,0,100)", [ids.customer]));
+    await negative('pending order shipping snapshot cannot be updated', '23514', () => db.query("UPDATE app.orders SET shipping_address='Modified address 999' WHERE id=$1", [ids.order_id]));
     await negative('order snapshot update is forbidden', '23514', () => db.query("UPDATE app.order_items SET unit_price=1 WHERE order_id=$1", [ids.order_id]));
+    await negative('order snapshot delete is forbidden', '23514', () => db.query("DELETE FROM app.order_items WHERE order_id=$1", [ids.order_id]));
     await negative('snapshot array elements require typed option fields', '23514', async () => {
       const oid=(await db.query(`INSERT INTO app.orders(user_id,shipping_address,recipient_name,recipient_phone,subtotal_amount,discount_amount,final_amount)
         VALUES($1,'Synthetic test address','Test','0900000000',100,0,100) RETURNING id`,[ids.customer])).rows[0].id;
       await db.query(`INSERT INTO app.order_items(order_id,variant_id,quantity,unit_price,product_name,brand_name,sku,options_snapshot)
         VALUES($1,$2,1,100,'X','X','X','[{"code":12}]')`,[oid,ids.variant]);
+    });
+    await negative('snapshot array rejects duplicate attribute codes', '23514', async () => {
+      const oid=(await db.query(`INSERT INTO app.orders(user_id,shipping_address,recipient_name,recipient_phone,subtotal_amount,discount_amount,final_amount)
+        VALUES($1,'Synthetic test address','Test','0900000000',100,0,100) RETURNING id`,[ids.customer])).rows[0].id;
+      await db.query(`INSERT INTO app.order_items(order_id,variant_id,quantity,unit_price,product_name,brand_name,sku,options_snapshot)
+        VALUES($1,$2,1,100,'X','X','X','[{"code":"color","label":"Màu","value_code":"black","value_label":"Đen"},{"code":"color","label":"Màu","value_code":"red","value_label":"Đỏ"}]')`,[oid,ids.variant]);
     });
     await negative('late append to historical order is forbidden', '23514', () => db.query("INSERT INTO app.order_items(order_id,variant_id,quantity,unit_price,product_name,brand_name,sku,options_snapshot) VALUES($1,$2,1,0,'X','X','X','[]')", [ids.order_id, ids.second_variant]));
     await positive('catalog price changes do not recalculate historical price', async () => {
@@ -205,10 +241,15 @@ test('PostgreSQL schema on a newly created empty database', { timeout: 120000 },
       await db.query("UPDATE app.orders SET status='SHIPPING' WHERE id=$1", [oid]);
       await db.query("UPDATE app.orders SET status='DELIVERED',payment_status='PAID',delivered_at=now() WHERE id=$1", [oid]);
       assert.equal((await db.query('SELECT payment_status FROM app.orders WHERE id=$1', [oid])).rows[0].payment_status, 'PAID');
+      await db.query('SAVEPOINT delivered_lock');
+      await assert.rejects(db.query("UPDATE app.orders SET status='CANCELLED',payment_status='UNPAID',delivered_at=NULL WHERE id=$1", [oid]), { code: '23514' });
+      await db.query('ROLLBACK TO SAVEPOINT delivered_lock');
     });
     await negative('orders may never be deleted', '23514', () => db.query('DELETE FROM app.orders WHERE id=$1', [ids.order_id]));
     await negative('ledger sign and reference are linked', '23514', () => db.query("INSERT INTO app.inventory_transactions(variant_id,type,quantity_change,reference_type,created_by,request_key) VALUES($1,'IMPORT',-1,'IMPORT',$2,$3)", [ids.variant, ids.warehouse, '11111111-1111-4111-8111-111111111111']));
+    await negative('EXPORT_ORDER requires negative quantity and order reference', '23514', () => db.query("INSERT INTO app.inventory_transactions(variant_id,type,quantity_change,reference_type,reference_id,created_by) VALUES($1,'EXPORT_ORDER',1,'ORDER',$2,$3)", [ids.variant, ids.order_id, ids.customer]));
     await negative('ledger cannot be edited', '23514', () => db.query("UPDATE app.inventory_transactions SET quantity_change=99 WHERE variant_id=$1", [ids.variant]));
+    await negative('ledger cannot be deleted', '23514', () => db.query("DELETE FROM app.inventory_transactions WHERE variant_id=$1", [ids.variant]));
     await negative('only one export per order and SKU', '23505', () => db.query("INSERT INTO app.inventory_transactions(variant_id,type,quantity_change,reference_type,reference_id,created_by) VALUES($1,'EXPORT_ORDER',-2,'ORDER',$2,$3)", [ids.variant, ids.order_id, ids.customer]));
     await negative('voucher usage owner matches order owner', '23503', async () => { await usage(await order('SEED-DEMO10'), ids.sales); });
     await negative('one active voucher use per account', '23505', async () => { await usage(await order('SEED-DEMO10')); await usage(await order('SEED-DEMO10')); });
@@ -217,6 +258,16 @@ test('PostgreSQL schema on a newly created empty database', { timeout: 120000 },
       await db.query("UPDATE app.orders SET status='CANCELLED' WHERE id=$1", [oid]);
       await db.query("UPDATE app.voucher_usages SET status='RELEASED' WHERE order_id=$1", [oid]);
       await usage(await order('SEED-DEMO10'));
+    });
+    await negative('released voucher usage cannot revert to APPLIED', '23514', async () => {
+      const oid = await order('SEED-DEMO10'); await usage(oid);
+      await db.query("UPDATE app.orders SET status='CANCELLED' WHERE id=$1", [oid]);
+      await db.query("UPDATE app.voucher_usages SET status='RELEASED' WHERE order_id=$1", [oid]);
+      await db.query("UPDATE app.voucher_usages SET status='APPLIED' WHERE order_id=$1", [oid]);
+    });
+    await negative('voucher usages cannot be deleted', '23514', async () => {
+      const oid = await order('SEED-DEMO10'); await usage(oid);
+      await db.query('DELETE FROM app.voucher_usages WHERE order_id=$1', [oid]);
     });
     await negative('usage must match order voucher snapshot', '23514', async () => { await usage(await order()); });
     await negative('cancellation and voucher release must agree', '23514', async () => {
@@ -229,10 +280,23 @@ test('PostgreSQL schema on a newly created empty database', { timeout: 120000 },
       assert.deepEqual(rights, { users: false, stock: false, ddl: false });
     });
     await negative('runtime direct stock write is denied', '42501', async () => { await db.query('SET LOCAL ROLE app_rw_user'); await db.query('UPDATE app.inventory SET quantity=0'); });
-    await positive('report role only reads aggregate views', async () => {
-      await db.query('SET LOCAL ROLE report_ro_user'); await db.query('SELECT * FROM app.vw_revenue_summary');
+    await positive('report role only reads aggregate views and delivered orders', async () => {
+      const oid = await order();
+      await db.query("UPDATE app.orders SET status='CONFIRMED' WHERE id=$1", [oid]);
+      await db.query("UPDATE app.orders SET status='SHIPPING' WHERE id=$1", [oid]);
+      await db.query("UPDATE app.orders SET status='DELIVERED',payment_status='PAID',delivered_at=now() WHERE id=$1", [oid]);
+      await db.query('SET LOCAL ROLE report_ro_user');
+      const summary = (await db.query('SELECT sum(order_count)::int AS orders, sum(revenue_amount)::text AS revenue FROM app.vw_revenue_summary')).rows[0];
+      assert.deepEqual(summary, { orders: 1, revenue: '100.25' });
+      const best = (await db.query('SELECT variant_id, quantity_sold::int, sales_rank::int FROM app.vw_best_selling_products')).rows;
+      assert.equal(best.length, 1);
+      assert.deepEqual(best[0], { variant_id: ids.variant, quantity_sold: 1, sales_rank: 1 });
       const rights = (await db.query("SELECT has_table_privilege(current_user,'app.orders','SELECT') AS orders,has_table_privilege(current_user,'app.vw_revenue_summary','UPDATE') AS writes")).rows[0];
       assert.deepEqual(rights, { orders: false, writes: false });
+    });
+    await positive('expected query indexes exist in schema app', async () => {
+      const found = (await db.query("SELECT indexname FROM pg_indexes WHERE schemaname='app' AND indexname = ANY($1::text[])", [['idx_ledger_reference', 'idx_ledger_created', 'idx_orders_created', 'idx_orders_user_created', 'idx_orders_active_status', 'idx_orders_delivered']])).rows;
+      assert.equal(found.length, 6);
     });
     await positive('new owner functions do not grant PUBLIC EXECUTE by default', async () => {
       await db.query('CREATE FUNCTION app.test_private_default() RETURNS INT LANGUAGE sql AS $$ SELECT 1 $$');
@@ -272,6 +336,26 @@ test('PostgreSQL schema on a newly created empty database', { timeout: 120000 },
       const pid = await product(); await variant(pid, [['color', 'black']]);
       await assert.rejects(db.query('COMMIT'), { code: '23514' });
       assert.equal((await db.query('SELECT count(*)::int AS n FROM app.products WHERE id=$1', [pid])).rows[0].n, 0);
+    });
+    await positive('app_rw_user commits deferred triggers fired by a SECURITY DEFINER helper', async () => {
+      await db.query(`CREATE FUNCTION app.test_secdef_create(cid INT, bid INT, uid INT, vid INT) RETURNS INT
+        LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
+        DECLARE pid INT; oid INT;
+        BEGIN
+          INSERT INTO app.products(category_id,brand_id,product_type_code,name,slug) VALUES(cid,bid,'PERFUME','Secdef','secdef-prod') RETURNING id INTO pid;
+          INSERT INTO app.orders(user_id,shipping_address,recipient_name,recipient_phone,subtotal_amount,discount_amount,final_amount)
+            VALUES(uid,'Synthetic test address','Test','0900000000',100.25,0,100.25) RETURNING id INTO oid;
+          INSERT INTO app.order_items(order_id,variant_id,quantity,unit_price,list_unit_price,product_name,brand_name,sku,options_snapshot)
+            SELECT oid,v.id,1,100.25,120.50,p.name,b.name,v.sku,'[]'::jsonb FROM app.product_variants v
+            JOIN app.products p ON p.id=v.product_id JOIN app.brands b ON b.id=p.brand_id WHERE v.id=vid;
+          RETURN oid;
+        END $$`);
+      await db.query('GRANT EXECUTE ON FUNCTION app.test_secdef_create(INT,INT,INT,INT) TO app_rw_user');
+      await db.query('SET LOCAL ROLE app_rw_user');
+      const oid = (await db.query('SELECT app.test_secdef_create($1,$2,$3,$4) AS id', [ids.category, ids.brand, ids.customer, ids.variant])).rows[0].id;
+      assert.ok(oid > 0);
+      await db.query('SET CONSTRAINTS ALL IMMEDIATE');
+      assert.equal((await db.query("SELECT has_function_privilege('app_rw_user','app.check_order_total()','EXECUTE') AS allowed")).rows[0].allowed, false);
     });
   } finally {
     await db?.end();

@@ -1,6 +1,6 @@
 # Thiết kế cơ sở dữ liệu PostgreSQL
 
-Bản thiết kế 1.0 — 19/11/2026. Chưa có DDL/migration được thực thi. G là 12 bảng tại SPEC §2 và DB objects §3; U là phạm vi mới; D là phương án trong [DECISIONS](DECISIONS.md), phải chốt trước migration phụ thuộc.
+Bản thiết kế mục tiêu 1.0 — 19/11/2026 (cập nhật ghi chú Task 03–05 ngày 20/11/2026). G là 12 bảng tại SPEC §2 và DB objects §3; U là phạm vi mới; D là phương án trong [DECISIONS](DECISIONS.md). Đã triển khai đủ 22 bảng và business/auth functions qua migrations `001`–`015`; xem lược đồ đang chạy tại [ERD](ERD.md), [MIGRATION_GUIDE](MIGRATION_GUIDE.md), [SCHEMA_VERIFICATION](SCHEMA_VERIFICATION.md) và mục 8 bên dưới.
 
 ## 1. Mô hình, quy ước và khác biệt nguồn
 
@@ -179,7 +179,7 @@ UNIQUE(reference_id,variant_id,type) WHERE type IN (EXPORT_ORDER,RETURN_CANCEL).
 
 Không DELETE order ở mọi trạng thái. Identity, address, totals, snapshots, created_xid không được UPDATE sau INSERT; status/payment/delivered_at chỉ đi theo function hợp lệ. Khi OLD cuối DELIVERED/CANCELLED, trigger chặn mọi UPDATE. created_xid không dùng làm business ID và không phụ thuộc xmin của row (xmin thay đổi khi UPDATE).
 
-pg_current_xact_id() trả xid8 của transaction cấp cao nhất, theo [PostgreSQL system information functions](https://www.postgresql.org/docs/current/functions-info.html). T02 phải xác nhận phiên bản hỗ trợ; không dùng timestamp để đoán một row có được tạo trong cùng transaction hay không.
+pg_current_xact_id() trả xid8 của transaction cấp cao nhất, theo [PostgreSQL system information functions](https://www.postgresql.org/docs/current/functions-info.html). T02/T03 đã xác nhận PostgreSQL 17.9 hỗ trợ `xid8` / `pg_current_xact_id()`; không dùng timestamp để đoán một row có được tạo trong cùng transaction hay không.
 
 ### order_items
 
@@ -378,3 +378,13 @@ Order graph: PENDING→CONFIRMED→SHIPPING→DELIVERED; PENDING/CONFIRMED→CAN
 Ảnh 1 áo phao, 2 hoodie adidas, 3 varsity Lakers/Nike, 4/5 hoodie Givenchy trắng/đỏ, 6 áo khoác adidas/Bayern. Chỉ đề xuất mappings trong UI spec; không chứng nhận brand/giá/thật giả. Chưa có ảnh giày/túi/đồng hồ/phụ kiện/nước hoa: fixture synthetic chỉ phục vụ test metadata và phải gắn nhãn demo, không trình bày như dữ liệu thật.
 
 Seeds: tạo 5 role ứng dụng mẫu, brands/categories/types/values, products/variants/images, nhập kho qua procedure. Tách fixture test edge/concurrency và seed benchmark 50k–100k đơn/chi tiết; không chạy benchmark seed tự động trên production. Sau migration verify row counts, FK, invariants, index plans, SQLSTATE mapping và grants; restore rehearsal theo TASKS.
+
+## 8. Ghi chú triển khai Task 03 & Task 04 và khác biệt hiện tại
+
+Task 03 và Task 04 (20/11/2026) đã triển khai hoàn chỉnh **22 bảng mục tiêu** và **logic nghiệp vụ cốt lõi trong PostgreSQL** qua 14 file SQL thuần (`001`–`014`) trên PostgreSQL 17.9:
+
+- **Đủ 22 bảng**: 12 bảng SPEC + 3 bảng mở rộng (`brands`, `product_images`, `banners`) + 5 bảng thuộc tính SKU đa ngành hàng (`002`) + 2 bảng vận hành `checkout_requests` và `audit_events` (`012`).
+- **Business DB objects (Task 04, `012`–`014`)**: `fn_calculate_voucher_discount`, `fn_place_order` (hỗ trợ cả chữ ký 3 tham số SPEC và 6 tham số idempotency/cart_version/expected_items), `fn_cancel_order`, `fn_transition_order`, `sp_import_inventory` (4 và 7 tham số), `trg_protect_finalized_orders`, `trg_set_updated_at`, `vw_revenue_summary`, `vw_best_selling_products`.
+- **Bảo mật & khóa đồng thời**: Toàn bộ business functions/procedures và 5 deferred constraint triggers chạy `SECURITY DEFINER` (owner `db_admin`, `search_path=pg_catalog, app, pg_temp`), thu hồi `PUBLIC`/`report_ro_user`, chỉ cấp `EXECUTE` 6 routines giao dịch cho `app_rw_user`; không cấp DML trực tiếp trên bảng gốc.
+- **Chính sách kinh doanh pending**: Các quyết định trong [DECISIONS](DECISIONS.md) vẫn giữ trạng thái chờ chốt chính thức; chưa triển khai backend REST API/UI hoặc benchmark 50k–100k đơn.
+- **Tài liệu vận hành và kiểm chứng**: Xem [ERD](ERD.md), [MIGRATION_GUIDE](MIGRATION_GUIDE.md), [SCHEMA_VERIFICATION](SCHEMA_VERIFICATION.md) và [roles_backup.sql](../database/roles_backup.sql).
