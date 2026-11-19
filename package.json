@@ -23,7 +23,9 @@
     "db:down": "docker compose down",
     "db:migrate": "node scripts/migrate.mjs up",
     "db:migrate:down": "node scripts/migrate.mjs down",
-    "db:verify": "node scripts/verify-database.mjs"
+    "db:verify": "node scripts/verify-database.mjs",
+    "db:seed": "node scripts/seed-database.mjs",
+    "db:test": "node --test database/tests/schema.test.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3",

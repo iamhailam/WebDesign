@@ -15,7 +15,7 @@ try {
     log: () => undefined,
   });
   console.log(`Migration ${direction}: ${migrations.length} SQL migration(s) applied.`);
-} catch {
-  console.error('Migration failed. Check database availability, credentials and SQL migration files.');
+} catch (error) {
+  console.error(`Migration failed (SQLSTATE ${error.code || 'unknown'}; constraint ${error.constraint || 'n/a'}). Check database availability and SQL files; credentials were not logged.`);
   process.exitCode = 1;
 }
