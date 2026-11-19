@@ -13,24 +13,58 @@ concurrency:
   group: production-delivery
   cancel-in-progress: false
 jobs:
-  quality:
+  configuration:
     if: github.ref == 'refs/heads/main' && inputs.release_approved
+    runs-on: ubuntu-latest
+    outputs:
+      api_base: ${{ steps.api.outputs.api_base }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+      - name: Validate repository production API base
+        id: api
+        env:
+          PRODUCTION_API_BASE: ${{ vars.PRODUCTION_API_BASE }}
+          RELEASE_BUILD: 'true'
+        run: node scripts/configure-api-base.mjs
+  quality:
+    needs: configuration
     uses: ./.github/workflows/ci.yml
+    with:
+      production_api_base: ${{ needs.configuration.outputs.api_base }}
+      release_build: true
   handoff:
     needs: quality
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Validate activation
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.quality.outputs.artifact_name }}
+          path: delivery
+      - name: Verify approved artifact and captured API base
         env:
-          API_BASE: ${{ vars.PRODUCTION_API_BASE }}
+          EXPECTED_API_BASE: ${{ needs.quality.outputs.api_base }}
         run: |
-          node -e "const u=new URL(process.env.API_BASE); if(u.protocol!=='https:' || u.hostname.endsWith('example.com') || u.pathname!=='/api') process.exit(1)"
+          cd delivery
+          sha256sum -c SHA256SUMS
+          cd ..
+          node scripts/verify-build-api-base.mjs delivery/release/frontend delivery/release/PUBLIC_API_BASE
       - name: Record manual deployment instructions
+        env:
+          ARTIFACT_NAME: ${{ needs.quality.outputs.artifact_name }}
+          API_BASE: ${{ needs.quality.outputs.api_base }}
         run: |
           {
             echo "Approved revision: $GITHUB_SHA"
-            echo "Download release-$GITHUB_SHA from the quality job; verify SHA256SUMS."
+            echo "Verified artifact: $ARTIFACT_NAME"
+            echo "Validated build API base: $API_BASE"
             echo "Ops: follow docs/DEPLOYMENT.md for backup, migration, backend then frontend promotion and smoke checks."
             echo "No external deployment or paid resource creation is automated by this workflow."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -1,23 +1,51 @@
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, loadEnv } from 'vite';
+import { resolveBuildApiBase } from '../scripts/api-base.mjs';
 
 export default defineConfig(({ mode }) => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const env = loadEnv(mode, root, '');
-  if (mode === 'production') {
-    const apiBase = process.env.VITE_API_BASE_URL || env.VITE_API_BASE_URL || '/api';
-    if (apiBase !== '/api') {
-      const url = new URL(apiBase);
-      if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/api' || url.search || url.hash) {
-        throw new Error('VITE_API_BASE_URL must be /api or https://<api-host>/api.');
-      }
-    }
-  }
+  const configuredBase = process.env.VITE_API_BASE_URL || env.VITE_API_BASE_URL || '/api';
+  const apiBase = mode === 'production' ? resolveBuildApiBase(configuredBase) : configuredBase;
   return {
     envDir: root,
-    plugins: [react(), tailwindcss()],
+    define: { 'import.meta.env.VITE_API_BASE_URL': JSON.stringify(apiBase) },
+    plugins: [react(), tailwindcss(), {
+      name: 'verify-api-base',
+      apply: 'build',
+      enforce: 'post',
+      generateBundle(_options, bundle) {
+        const chunk = Object.values(bundle).find((entry) => entry.type === 'chunk'
+          && Object.keys(entry.modules).some((id) => id.replace(/\\/g, '/').endsWith('/src/lib/api.ts')));
+        if (!chunk || chunk.type !== 'chunk' || !chunk.code.includes(JSON.stringify(apiBase))) {
+          this.error('Compiled API module must contain the configured API base.');
+        }
+      },
+      writeBundle(outputOptions, bundle) {
+        const chunk = Object.values(bundle).find((entry) => entry.type === 'chunk'
+          && Object.keys(entry.modules).some((id) => id.replace(/\\/g, '/').endsWith('/src/lib/api.ts')));
+        if (!chunk || chunk.type !== 'chunk' || !outputOptions.dir) {
+          this.error('Compiled API module was not written to disk.');
+        }
+        const written = readFileSync(resolve(outputOptions.dir, chunk.fileName));
+        if (!written.toString('utf8').includes(JSON.stringify(apiBase))) {
+          this.error('Written API chunk does not contain the configured API base.');
+        }
+        writeFileSync(
+          resolve(outputOptions.dir, 'api-config.json'),
+          JSON.stringify({
+            api_base: apiBase,
+            api_chunk: chunk.fileName,
+            sha256: createHash('sha256').update(written).digest('hex'),
+          }, null, 2) + '\n',
+        );
+      },
+    }],
     resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
     build: {
       rollupOptions: {

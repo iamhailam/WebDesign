@@ -40,10 +40,15 @@ Dev/staging/production dùng DB, credentials, domain riêng. API không phục v
 npm.cmd ci
 $env:VITE_API_BASE_URL='https://api.<domain>/api'
 npm.cmd run build
+$env:EXPECTED_API_BASE=$env:VITE_API_BASE_URL
+npm.cmd run build:verify
 Remove-Item Env:VITE_API_BASE_URL
+Remove-Item Env:EXPECTED_API_BASE
 ```
 
 `frontend/dist` là toàn bộ static output; `backend/dist/server.js` là entry runtime. `VITE_API_BASE_URL=/api` chỉ đúng khi đã có reverse proxy cùng origin `/api`. Với hosting tách origin như khuyến nghị, build bằng URL HTTPS tuyệt đối kết thúc `/api`, không slash cuối. Đổi biến frontend cần build lại. Không dùng `vite dev`, `vite preview`, `tsx watch` hay `npm run dev` làm production server.
+
+Build xuất `frontend/dist/api-config.json` chứa API base đã nhúng, tên chunk chứa API client và SHA-256 của chunk. `build:verify` kiểm cấu hình mong đợi với manifest và JavaScript thực tế; không chỉ kiểm một file text mô tả endpoint. Domain trong ví dụ phải được thay bằng domain đã duyệt; production build/release từ chối `example.com` và mọi subdomain của nó.
 
 Backend native, từ root checkout đúng revision và secrets được inject:
 
@@ -83,6 +88,7 @@ Template được track: [.env.production.example](../.env.production.example). 
 | MIGRATION_DATABASE_URL | Chỉ job/operator | Login `db_admin`/migrator được kiểm soát, không nằm trong runtime environment |
 | MIGRATION_SSL_CA | Chỉ job/operator | CA PEM nếu nhà cung cấp cần; runner production luôn xác minh certificate/hostname |
 | VITE_API_BASE_URL | Frontend build, PUBLIC | `https://api.<domain>/api`; bất kỳ `VITE_*` nào đều có thể đọc từ browser |
+| PRODUCTION_API_BASE | GitHub repository variable, PUBLIC | Nguồn duy nhất cho CI/release; URL HTTPS thật kết thúc `/api`, không example.com; không chỉ đặt ở environment production |
 
 Không đưa `POSTGRES_PASSWORD`, `MIGRATION_*`, `DB_PASSWORD`, JWT/readiness token vào hosting frontend. Không log/dán secrets, không upload `.env` vào CI artifacts. Sinh secret bằng secret manager hoặc Node crypto trên máy vận hành rồi lưu trực tiếp vào vault; không lưu trong Git, issue hay screenshot.
 
@@ -127,9 +133,33 @@ Upgrade giữ tương thích code N/N−1 bằng expand→deploy→backfill có 
 
 ## 8. CI/CD và thứ tự phát hành
 
-[ci.yml](../.github/workflows/ci.yml) chạy push main/PR/manual: `npm ci`, lint, strict types, production build, DB thật Compose, schema/concurrency/API/UI tests, SQL up/down probe, restore drill, runtime audit, Docker build. Actions pin SHA; quyền `contents:read`, không cloud secrets, DB test riêng. Xuất `release-<sha>` cùng REVISION/PUBLIC_API_BASE/SHA256SUMS, retention14 ngày. Đây là cấu hình pipeline chưa được chạy trên GitHub trong phiên này.
+[ci.yml](../.github/workflows/ci.yml) chạy push main/PR/manual: `npm ci`, lint, strict types, build, DB thật Compose, schema/concurrency/API/UI tests, SQL up/down probe, restore drill, runtime audit, Docker build. Actions pin SHA; quyền `contents:read`, không cloud secrets, DB test riêng. Unit/component tests luôn dùng `VITE_API_BASE_URL=/api` qua Vitest test environment, kể cả parent process đang đặt URL production; các test API client riêng vẫn kiểm HTTPS bằng override có kiểm soát.
 
-[release.yml](../.github/workflows/release.yml) là **continuous delivery có bước deploy thủ công**: chỉ workflow_dispatch trên main với `release_approved=true`, chạy lại CI, qua environment `production`, kiểm repo variable `PRODUCTION_API_BASE` thật, rồi bàn giao artifact đúng SHA cho Ops. Workflow không gọi API cloud, migrate remote, publish hoặc tạo dịch vụ. CI mặc định URL example chỉ để kiểm build; chưa cấu hình biến thật thì artifact không được dùng production. Không tuyên bố đã có automated cloud deployment.
+Nguồn build là **repository variable `PRODUCTION_API_BASE`**. CI thường chưa có biến này sẽ build `/api` và xuất `build-<sha>`; nếu đã có thì validate trước khi build. Không fallback sang domain example. Bước build override VITE_API_BASE_URL bằng output đã validate, các bước tests vẫn `/api`. `npm run build:verify` chạy sau build và sau copy artifact, trước checksum/upload.
+
+[release.yml](../.github/workflows/release.yml) là **continuous delivery có bước deploy thủ công**: chỉ workflow_dispatch trên main với `release_approved=true`. Job `configuration` không dùng environment production: nó đọc repository variable một lần, validate bắt buộc URL HTTPS thật rồi truyền output vào reusable CI với `release_build=true`. Thiếu URL, `/api`, HTTP, example.com/subdomains, credentials, query/fragment hoặc path khác `/api` đều bị từ chối trước build. URL được chuẩn hóa một lần; không có endpoint production mặc định.
+
+CI release xuất `release-<sha>` cùng REVISION/PUBLIC_API_BASE/SHA256SUMS và `frontend/api-config.json`, retention14 ngày; outputs gồm API base đã build và tên artifact. Job `handoff` qua environment `production` để approval, download đúng artifact, kiểm checksum và đối chiếu URL từ output quality với manifest, compiled chunk và PUBLIC_API_BASE. Nó **không đọc lại** PRODUCTION_API_BASE từ environment production, nên environment override hoặc thay đổi variable sau validation không đổi URL của artifact đang bàn giao. Workflow không gọi API cloud, migrate remote, publish hoặc tạo dịch vụ. Không tuyên bố đã có automated cloud deployment.
+
+Nguyên nhân run44628702888 ở commit dfff0cb: URL build bị đặt ở cấp job nên tràn vào test đang kỳ vọng `/api/health`. Cấu hình hiện tại tách hai phạm vi, có regression tests cho test isolation, HTTPS client, release validation và artifact mismatch. Workflows sửa trong đợt này chưa được push/dispatch trên GitHub.
+
+Kiểm lại local từ root:
+
+```powershell
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd run build
+npm.cmd test
+$env:VITE_API_BASE_URL='https://api.<domain>/api'
+npm.cmd test --workspace frontend
+npm.cmd run build
+$env:EXPECTED_API_BASE=$env:VITE_API_BASE_URL
+npm.cmd run build:verify
+Remove-Item Env:VITE_API_BASE_URL
+Remove-Item Env:EXPECTED_API_BASE
+```
+
+Frontend tests vẫn dùng `/api` ở test profile; regression tests chủ động kiểm thêm HTTPS. `ci:api-base` chỉ đọc PRODUCTION_API_BASE/RELEASE_BUILD được truyền vào process, không đọc `.env` hay VITE_*; trong GitHub Actions nó ghi output `api_base`. `build:verify -- <static-directory> <PUBLIC_API_BASE-file>` kiểm thêm URL của artifact đóng gói. Hai scripts không truy cập mạng hoặc DB.
 
 Người dùng cần push cấu hình sau review, bật branch protection/required CI, đặt PRODUCTION_API_BASE, cấu hình environment reviewers + protected main trước dispatch. Khả năng required reviewer phụ thuộc gói/visibility GitHub; nếu không hỗ trợ, giữ bước release thủ công do người có quyền triển khai và lưu phê duyệt riêng. [GitHub environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
 

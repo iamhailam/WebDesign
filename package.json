@@ -16,6 +16,8 @@
     "setup:env": "node scripts/setup-env.mjs",
     "dev": "concurrently --kill-others -n api,web \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
     "build": "npm run build --workspaces",
+    "ci:api-base": "node scripts/configure-api-base.mjs",
+    "build:verify": "node scripts/verify-build-api-base.mjs",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "npm run typecheck --workspaces",
     "test": "npm run test --workspaces && node --test scripts/tests/*.test.mjs",

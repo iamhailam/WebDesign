@@ -5,6 +5,18 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      production_api_base:
+        type: string
+        default: ''
+      release_build:
+        type: boolean
+        default: false
+    outputs:
+      api_base:
+        value: ${{ jobs.verify.outputs.api_base }}
+      artifact_name:
+        value: ${{ jobs.verify.outputs.artifact_name }}
 
 permissions:
   contents: read
@@ -16,8 +28,12 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      api_base: ${{ steps.api.outputs.api_base }}
+      artifact_name: ${{ steps.bundle.outputs.artifact_name }}
     env:
-      VITE_API_BASE_URL: ${{ vars.PRODUCTION_API_BASE || 'https://api.example.com/api' }}
+      VITE_API_BASE_URL: /api
+      ARTIFACT_NAME: ${{ inputs.release_build && 'release' || 'build' }}-${{ github.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -26,6 +42,12 @@ jobs:
           cache: npm
       - run: npm install --global npm@11.20.0
       - run: npm ci
+      - name: Resolve and validate build API base
+        id: api
+        env:
+          PRODUCTION_API_BASE: ${{ inputs.production_api_base || vars.PRODUCTION_API_BASE }}
+          RELEASE_BUILD: ${{ inputs.release_build && 'true' || 'false' }}
+        run: npm run ci:api-base
       - name: Validate workflow syntax and shell scripts
         run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" -w /repo rhysd/actionlint:1.7.7@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 .github/workflows/ci.yml .github/workflows/release.yml
       - run: npm run setup:env
@@ -33,6 +55,11 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+        env:
+          VITE_API_BASE_URL: ${{ steps.api.outputs.api_base }}
+      - run: npm run build:verify
+        env:
+          EXPECTED_API_BASE: ${{ steps.api.outputs.api_base }}
       - run: npm run db:verify
       - run: npm run db:test
       - run: npm test
@@ -41,6 +68,9 @@ jobs:
       - run: npm audit --omit=dev
       - run: docker build -t fashion-api:${{ github.sha }} .
       - name: Assemble versioned delivery bundle
+        id: bundle
+        env:
+          EXPECTED_API_BASE: ${{ steps.api.outputs.api_base }}
         run: |
           mkdir -p release/frontend release/backend
           cp -R frontend/dist/. release/frontend/
@@ -53,11 +83,13 @@ jobs:
           cp frontend/package.json release/frontend/package.json
           cp frontend/vercel.json release/frontend/vercel.json
           printf '%s\n' "$GITHUB_SHA" > release/REVISION
-          printf '%s\n' "$VITE_API_BASE_URL" > release/PUBLIC_API_BASE
+          printf '%s\n' "$EXPECTED_API_BASE" > release/PUBLIC_API_BASE
+          npm run build:verify -- release/frontend release/PUBLIC_API_BASE
           find release -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          printf 'artifact_name=%s\n' "$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: release-${{ github.sha }}
+          name: ${{ steps.bundle.outputs.artifact_name }}
           path: |
             release/
             SHA256SUMS

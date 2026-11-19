@@ -11,6 +11,7 @@ function renderRoute(route: string) {
 
 describe('foundation routes and health contract', () => {
   it('uses the API response on the system route', async () => {
+    expect(import.meta.env.VITE_API_BASE_URL).toBe('/api');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { status: 'ok', service: 'fashion-api' }, meta: { request_id: '22222222-2222-4222-8222-222222222222' } }) }));
     renderRoute('/system');
     expect(await screen.findByText('API đang hoạt động.')).toBeInTheDocument();
